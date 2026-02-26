@@ -48,7 +48,21 @@ public class AudioFrame extends BaseMediaFrame {
         Operation op = optionsPanel.getSelectedOperation();
         AudioOptions options = optionsPanel.buildOptions();
 
-        // Validate: CONCAT and EXTRACT_AUDIO need specific input counts
+        // Auto-suggest CONCAT when multiple files are loaded but TRANSCODE is selected
+        if (op == Operation.TRANSCODE && inputs().size() > 1) {
+            int choice = JOptionPane.showConfirmDialog(this,
+                "Tienes " + inputs().size() + " archivos cargados.\n" +
+                "¿Quieres UNIFICARLOS (Concatenar) en un solo archivo?\n" +
+                "Pulsa 'Sí' para unificar, 'No' para convertir solo el primero.",
+                "¿Unificar archivos?", JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (choice == JOptionPane.CANCEL_OPTION) return null;
+            if (choice == JOptionPane.YES_OPTION) {
+                op = Operation.CONCAT;
+                optionsPanel.setSelectedOperation(op);
+            }
+        }
+
+        // Validate: CONCAT needs at least 2 inputs
         if (op == Operation.CONCAT && inputs().size() < 2) {
             JOptionPane.showMessageDialog(this, "Concatenar requiere al menos 2 archivos de entrada.",
                 "Validación", JOptionPane.WARNING_MESSAGE);

@@ -117,7 +117,7 @@ class FfmpegCommandBuilderTest {
     // ── CONCAT ────────────────────────────────────────────────────────────────
 
     @Test
-    void buildConcat_multipleInputs_usesConcatDemuxer() throws Exception {
+    void buildConcat_audio_usesConcatDemuxerWithListFile() throws Exception {
         MediaItem item1 = new MediaItem(tempDir.resolve("a.mp3"));
         MediaItem item2 = new MediaItem(tempDir.resolve("b.mp3"));
         AudioOptions opts = new AudioOptions();
@@ -125,25 +125,49 @@ class FfmpegCommandBuilderTest {
 
         List<String> cmd = builder.build(job);
 
+        // Audio concat → concat demuxer with .txt list file
         assertCommandStartsCorrectly(cmd);
         assertContainsSequence(cmd, "-f", "concat");
         assertContainsSequence(cmd, "-safe", "0");
+        int iIndex = cmd.indexOf("-i");
+        assertTrue(iIndex >= 0);
+        assertTrue(cmd.get(iIndex + 1).endsWith(".txt"), "Audio concat -i should point to .txt list file");
     }
 
     @Test
-    void buildConcat_createsFileListInsteadOfDirectInput() throws Exception {
+    void buildConcat_videoCopy_usesConcatDemuxerWithListFile() throws Exception {
         MediaItem item1 = new MediaItem(tempDir.resolve("a.mp4"));
         MediaItem item2 = new MediaItem(tempDir.resolve("b.mp4"));
         VideoOptions opts = new VideoOptions();
+        opts.setVideoCodec("copy");
         Job job = new Job(MediaType.VIDEO, Operation.CONCAT, java.util.Arrays.asList(item1, item2), outputPath, opts);
 
         List<String> cmd = builder.build(job);
 
-        // -i should point to a .txt temp file, not directly to input files
+        // Video copy → concat demuxer with .txt list file
+        assertContainsSequence(cmd, "-f", "concat");
         int iIndex = cmd.indexOf("-i");
         assertTrue(iIndex >= 0);
-        String inputArg = cmd.get(iIndex + 1);
-        assertTrue(inputArg.endsWith(".txt"), "Concat -i should point to a .txt list file, got: " + inputArg);
+        assertTrue(cmd.get(iIndex + 1).endsWith(".txt"), "Video copy concat -i should point to .txt list file");
+    }
+
+    @Test
+    void buildConcat_videoReencode_usesFilterComplexConcat() throws Exception {
+        MediaItem item1 = new MediaItem(tempDir.resolve("a.mp4"));
+        MediaItem item2 = new MediaItem(tempDir.resolve("b.mp4"));
+        VideoOptions opts = new VideoOptions();
+        // default codec (libx264) → should use filter_complex
+        Job job = new Job(MediaType.VIDEO, Operation.CONCAT, java.util.Arrays.asList(item1, item2), outputPath, opts);
+
+        List<String> cmd = builder.build(job);
+
+        // filter_complex path: two separate -i flags, no concat demuxer
+        assertCommandStartsCorrectly(cmd);
+        long iCount = cmd.stream().filter("-i"::equals).count();
+        assertEquals(2, iCount, "Video re-encode concat should have one -i per input (no list file)");
+        assertTrue(cmd.contains("-filter_complex"), "Must use -filter_complex for different-source video concat");
+        assertTrue(cmd.contains("-map"), "Must map output streams");
+        assertFalse(cmd.contains("-f"), "Must NOT use concat demuxer -f flag");
     }
 
     // ── MUX ──────────────────────────────────────────────────────────────────

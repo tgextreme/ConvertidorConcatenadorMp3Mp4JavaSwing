@@ -70,4 +70,27 @@ class VideoOptionsPanelTest {
         assertNotNull(ext);
         assertFalse(ext.trim().isEmpty());
     }
+
+    @Test
+    void setSelectedOperation_updatesComboBox() {
+        VideoOptionsPanel panel = new VideoOptionsPanel();
+
+        panel.setSelectedOperation(Operation.REMUX);
+        assertEquals(Operation.REMUX, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.EXTRACT_AUDIO);
+        assertEquals(Operation.EXTRACT_AUDIO, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.CONCAT);
+        assertEquals(Operation.CONCAT, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.MUX);
+        assertEquals(Operation.MUX, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.TRIM);
+        assertEquals(Operation.TRIM, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.TRANSCODE);
+        assertEquals(Operation.TRANSCODE, panel.getSelectedOperation());
+    }
 }

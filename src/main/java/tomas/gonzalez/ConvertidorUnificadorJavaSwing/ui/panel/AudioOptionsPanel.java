@@ -93,6 +93,17 @@ public class AudioOptionsPanel extends JPanel {
         };
     }
 
+    public void setSelectedOperation(Operation op) {
+        int idx = switch (op) {
+            case EXTRACT_AUDIO -> 1;
+            case CONCAT        -> 2;
+            case TRIM          -> 3;
+            case NORMALIZE     -> 4;
+            default            -> 0;
+        };
+        operationBox.setSelectedIndex(idx);
+    }
+
     public AudioOptions buildOptions() {
         AudioOptions ao = new AudioOptions();
 

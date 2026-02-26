@@ -102,6 +102,18 @@ public class VideoOptionsPanel extends JPanel {
         };
     }
 
+    public void setSelectedOperation(Operation op) {
+        int idx = switch (op) {
+            case REMUX         -> 1;
+            case EXTRACT_AUDIO -> 2;
+            case CONCAT        -> 3;
+            case MUX           -> 4;
+            case TRIM          -> 5;
+            default            -> 0;
+        };
+        operationBox.setSelectedIndex(idx);
+    }
+
     public VideoOptions buildOptions() {
         VideoOptions vo = new VideoOptions();
         vo.setContainer((String) containerBox.getSelectedItem());

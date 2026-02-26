@@ -5,7 +5,9 @@ import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions.B
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions.Orientation;
 
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -82,12 +84,29 @@ public class FfmpegCommandBuilder {
 
     // ---------------------------------------------------------------- CONCAT
     private List<String> buildConcat(Job job) throws IOException {
-        // Create a temp file list
+        boolean isAudio = job.getOptions() instanceof AudioOptions;
+        boolean isCopy  = job.getOptions() instanceof VideoOptions vo2
+                          && "copy".equals(vo2.getVideoCodec());
+
+        if (isAudio || isCopy) {
+            // Concat demuxer: fast, but requires identical codec/resolution in all inputs
+            return buildConcatDemuxer(job);
+        } else {
+            // filter_complex concat: re-encodes, handles different codecs and resolutions
+            return buildConcatFilterComplex(job);
+        }
+    }
+
+    /** Concat demuxer approach — audio or video-copy. */
+    private List<String> buildConcatDemuxer(Job job) throws IOException {
         Path listFile = Files.createTempFile("ffmpeg_concat_", ".txt");
-        try (PrintWriter pw = new PrintWriter(listFile.toFile())) {
+        try (PrintWriter pw = new PrintWriter(
+                new OutputStreamWriter(Files.newOutputStream(listFile), StandardCharsets.UTF_8))) {
             for (MediaItem item : job.getInputs()) {
-                String escaped = item.getPath().toAbsolutePath().toString().replace("'", "'\\''");
-                pw.println("file '" + escaped + "'");
+                String pathStr = item.getPath().toAbsolutePath().toString()
+                        .replace("\\", "/")
+                        .replace("'", "\\'");
+                pw.println("file '" + pathStr + "'");
             }
         }
 
@@ -100,14 +119,80 @@ public class FfmpegCommandBuilder {
 
         if (job.getOptions() instanceof AudioOptions ao) {
             applyAudioOptions(cmd, ao);
-        } else if (job.getOptions() instanceof VideoOptions vo) {
-            if ("copy".equals(vo.getVideoCodec())) {
-                cmd.add("-c"); cmd.add("copy");
-            } else {
-                applyVideoOptions(cmd, vo);
-            }
         } else {
             cmd.add("-c"); cmd.add("copy");
+        }
+
+        cmd.add(job.getOutput().toAbsolutePath().toString());
+        return cmd;
+    }
+
+    /**
+     * filter_complex concat approach — video re-encoding.
+     * Normalises resolution/fps/pixel-format across all inputs so that
+     * files with different codecs or dimensions can be joined.
+     */
+    private List<String> buildConcatFilterComplex(Job job) {
+        VideoOptions vo = (VideoOptions) job.getOptions();
+        int n = job.getInputs().size();
+
+        // Target resolution: use user-set values or fall back to 1280×720
+        int w   = vo.getWidth()  > 0 ? vo.getWidth()  : 1280;
+        int h   = vo.getHeight() > 0 ? vo.getHeight() : 720;
+        int fps = vo.getFps()    > 0 ? (int) vo.getFps() : 30;
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-progress"); cmd.add("pipe:1");
+
+        for (MediaItem item : job.getInputs()) {
+            cmd.add("-i"); cmd.add(item.getPath().toAbsolutePath().toString());
+        }
+
+        // Build filter_complex: scale + pad each video stream, then concat
+        StringBuilder fc = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            fc.append("[").append(i).append(":v]")
+              .append("scale=").append(w).append(":").append(h)
+              .append(":force_original_aspect_ratio=decrease,")
+              .append("pad=").append(w).append(":").append(h)
+              .append(":(ow-iw)/2:(oh-ih)/2,")
+              .append("fps=").append(fps).append(",")
+              .append("format=yuv420p,setsar=1")
+              .append("[v").append(i).append("];");
+        }
+        for (int i = 0; i < n; i++) {
+            fc.append("[v").append(i).append("][").append(i).append(":a]");
+        }
+        fc.append("concat=n=").append(n).append(":v=1:a=1[vout][aout]");
+
+        cmd.add("-filter_complex"); cmd.add(fc.toString());
+        cmd.add("-map"); cmd.add("[vout]");
+        cmd.add("-map"); cmd.add("[aout]");
+
+        // Video codec
+        String videoCodec = vo.getVideoCodec();
+        if (videoCodec == null || videoCodec.trim().isEmpty()) videoCodec = "libx264";
+        cmd.add("-c:v"); cmd.add(videoCodec);
+
+        if (vo.getBitrateMode() == VideoOptions.BitrateMode.CRF) {
+            cmd.add("-crf"); cmd.add(String.valueOf(vo.getCrf()));
+        } else if (vo.getVideoBitrateKbps() > 0) {
+            cmd.add("-b:v"); cmd.add(vo.getVideoBitrateKbps() + "k");
+        }
+        if (vo.getPreset() != null && !vo.getPreset().trim().isEmpty()
+                && (videoCodec.contains("x264") || videoCodec.contains("x265"))) {
+            cmd.add("-preset"); cmd.add(vo.getPreset());
+        }
+
+        // Audio codec
+        if (vo.getAudioCodec() != null && !vo.getAudioCodec().trim().isEmpty()) {
+            cmd.add("-c:a"); cmd.add(vo.getAudioCodec());
+        } else {
+            cmd.add("-c:a"); cmd.add("aac");
+        }
+        if (vo.getAudioBitrateKbps() > 0 && !"copy".equals(vo.getAudioCodec())) {
+            cmd.add("-b:a"); cmd.add(vo.getAudioBitrateKbps() + "k");
         }
 
         cmd.add(job.getOutput().toAbsolutePath().toString());

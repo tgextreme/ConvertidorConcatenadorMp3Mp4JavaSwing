@@ -56,4 +56,24 @@ class AudioOptionsPanelTest {
         assertNotNull(ext);
         assertFalse(ext.trim().isEmpty());
     }
+
+    @Test
+    void setSelectedOperation_updatesComboBox() {
+        AudioOptionsPanel panel = new AudioOptionsPanel();
+
+        panel.setSelectedOperation(Operation.EXTRACT_AUDIO);
+        assertEquals(Operation.EXTRACT_AUDIO, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.CONCAT);
+        assertEquals(Operation.CONCAT, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.TRIM);
+        assertEquals(Operation.TRIM, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.NORMALIZE);
+        assertEquals(Operation.NORMALIZE, panel.getSelectedOperation());
+
+        panel.setSelectedOperation(Operation.TRANSCODE);
+        assertEquals(Operation.TRANSCODE, panel.getSelectedOperation());
+    }
 }
