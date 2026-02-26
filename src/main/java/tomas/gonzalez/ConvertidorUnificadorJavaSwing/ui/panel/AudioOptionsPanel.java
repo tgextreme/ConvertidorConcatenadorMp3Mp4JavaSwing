@@ -49,7 +49,6 @@ public class AudioOptionsPanel extends JPanel {
     private final JTextField imagePathField = new JTextField("", 22);
     private final JButton imageBrowseBtn = new JButton("...");
     private final JComboBox<String> videoResBox = new JComboBox<>(VIDEO_RESOLUTIONS);
-    private final JLabel imageSectionLabel = new JLabel();
 
     public AudioOptionsPanel() {
         setLayout(new GridBagLayout());

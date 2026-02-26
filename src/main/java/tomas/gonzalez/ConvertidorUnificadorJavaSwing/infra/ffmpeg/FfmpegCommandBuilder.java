@@ -130,7 +130,7 @@ public class FfmpegCommandBuilder {
 
     /**
      * filter_complex concat approach — video re-encoding.
-     * Normalises resolution/fps/pixel-format across all inputs so that
+     * Normalizes resolution/fps/pixel-format across all inputs so that
      * files with different codecs or dimensions can be joined.
      */
     private List<String> buildConcatFilterComplex(Job job) {
@@ -266,10 +266,10 @@ public class FfmpegCommandBuilder {
 
     // ---------------------------------------------------------------- AUDIO TO VIDEO
     /**
-     * Combina una imagen estática con uno o varios audios y genera un MP4.
-     * Si hay múltiples entradas de audio se concatenan primero vía concat demuxer.
+     * Combines a static image with one or more audio files and produces an MP4.
+     * If multiple audio inputs are provided they are concatenated via concat demuxer.
      *
-     * Comando resultante (una sola pasada):
+     * Single-pass command:
      *   ffmpeg -loop 1 -i image -f concat -safe 0 -i list.txt
      *          -vf "scale=W:H:force_original_aspect_ratio=decrease,pad=W:H:(ow-iw)/2:(oh-ih)/2:black"
      *          -c:v libx264 -tune stillimage -pix_fmt yuv420p
@@ -281,7 +281,7 @@ public class FfmpegCommandBuilder {
         String imagePath = ao.getBackgroundImagePath();
         if (imagePath == null || imagePath.trim().isEmpty()) {
             throw new IllegalArgumentException(
-                "La operación 'Audio+Imagen → MP4' requiere una imagen de fondo.");
+                "The 'Audio+Image -> MP4' operation requires a background image.");
         }
 
         // Build concat list file (works even with a single audio file)
