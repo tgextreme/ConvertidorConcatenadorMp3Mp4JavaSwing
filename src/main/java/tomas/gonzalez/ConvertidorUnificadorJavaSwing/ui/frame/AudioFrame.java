@@ -48,6 +48,24 @@ public class AudioFrame extends BaseMediaFrame {
         Operation op = optionsPanel.getSelectedOperation();
         AudioOptions options = optionsPanel.buildOptions();
 
+        // AUDIO_TO_VIDEO: validate image and at least 1 audio input
+        if (op == Operation.AUDIO_TO_VIDEO) {
+            if (inputs().isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                    "Añade al menos un archivo de audio para generar el vídeo.",
+                    "Validación", JOptionPane.WARNING_MESSAGE);
+                return null;
+            }
+            if (options.getBackgroundImagePath() == null
+                    || options.getBackgroundImagePath().trim().isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                    "Selecciona una imagen de fondo en las opciones.",
+                    "Validación", JOptionPane.WARNING_MESSAGE);
+                return null;
+            }
+            return new Job(MediaType.AUDIO, op, inputs(), outputPath, options);
+        }
+
         // Auto-suggest CONCAT when multiple files are loaded but TRANSCODE is selected
         if (op == Operation.TRANSCODE && inputs().size() > 1) {
             int choice = JOptionPane.showConfirmDialog(this,

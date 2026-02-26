@@ -4,7 +4,9 @@ import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.AudioOptions;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.Operation;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
+import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -23,7 +25,14 @@ public class AudioOptionsPanel extends JPanel {
     }};
 
     private static final String[] OPERATIONS = {
-        "Transcodificar", "Extraer Audio", "Concatenar", "Recortar", "Normalizar"
+        "Transcodificar", "Extraer Audio", "Concatenar", "Recortar", "Normalizar",
+        "Audio+Imagen \u2192 MP4"
+    };
+
+    // Resolution presets for Audio → MP4
+    private static final String[] VIDEO_RESOLUTIONS = {
+        "1920x1080 (Full HD)", "1280x720 (HD)", "1080x1080 (Cuadrado)",
+        "854x480 (480p)", "Autom\u00e1tico (imagen original)"
     };
 
     private final JComboBox<String> operationBox = new JComboBox<>(OPERATIONS);
@@ -34,6 +43,13 @@ public class AudioOptionsPanel extends JPanel {
     private final JCheckBox normalizeCheck = new JCheckBox("Normalizar (loudnorm)");
     private final JTextField trimStartField = new JTextField("", 8);
     private final JTextField trimEndField = new JTextField("", 8);
+
+    // Audio+Imagen → MP4 section
+    private final JPanel imageSection = new JPanel(new GridBagLayout());
+    private final JTextField imagePathField = new JTextField("", 22);
+    private final JButton imageBrowseBtn = new JButton("...");
+    private final JComboBox<String> videoResBox = new JComboBox<>(VIDEO_RESOLUTIONS);
+    private final JLabel imageSectionLabel = new JLabel();
 
     public AudioOptionsPanel() {
         setLayout(new GridBagLayout());
@@ -76,11 +92,65 @@ public class AudioOptionsPanel extends JPanel {
 
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 2;
         add(normalizeCheck, gc);
+        row++;
 
-        // Link container to codec
-        containerBox.addActionListener(e -> {
-            // Updates codec automatically
-        });
+        // --- Image section (Audio+Imagen → MP4) ---
+        buildImageSection();
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 2; gc.weightx = 1;
+        add(imageSection, gc);
+        imageSection.setVisible(false);
+
+        // Sync visibility with operation selection
+        operationBox.addActionListener(e -> onOperationChanged());
+    }
+
+    private void buildImageSection() {
+        imageSection.setBorder(BorderFactory.createTitledBorder("🖼\u00a0Imagen de fondo"));
+        GridBagConstraints gc = new GridBagConstraints();
+        gc.insets = new Insets(3, 4, 3, 4);
+        gc.anchor = GridBagConstraints.WEST;
+        gc.fill = GridBagConstraints.HORIZONTAL;
+
+        int row = 0;
+
+        gc.gridx = 0; gc.gridy = row; gc.weightx = 0;
+        imageSection.add(new JLabel("Imagen (PNG/JPG/WEBP…):"), gc);
+        gc.gridx = 1; gc.weightx = 1;
+        imagePathField.setEditable(false);
+        imageSection.add(imagePathField, gc);
+        gc.gridx = 2; gc.weightx = 0;
+        imageBrowseBtn.setToolTipText("Seleccionar imagen");
+        imageSection.add(imageBrowseBtn, gc);
+        row++;
+
+        gc.gridx = 0; gc.gridy = row; gc.weightx = 0;
+        imageSection.add(new JLabel("Resolución vídeo:"), gc);
+        gc.gridx = 1; gc.gridwidth = 2; gc.weightx = 1;
+        imageSection.add(videoResBox, gc);
+
+        imageBrowseBtn.addActionListener(e -> chooseImageFile());
+    }
+
+    private void chooseImageFile() {
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle("Seleccionar imagen de fondo");
+        fc.setFileFilter(new FileNameExtensionFilter(
+                "Imágenes (PNG, JPG, WEBP, BMP, GIF)", "png", "jpg", "jpeg", "webp", "bmp", "gif"));
+        fc.setAcceptAllFileFilterUsed(true);
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File f = fc.getSelectedFile();
+            imagePathField.setText(f.getAbsolutePath());
+            imagePathField.setToolTipText(f.getAbsolutePath());
+        }
+    }
+
+    private void onOperationChanged() {
+        boolean isAudioToVideo = getSelectedOperation() == Operation.AUDIO_TO_VIDEO;
+        imageSection.setVisible(isAudioToVideo);
+        // For AUDIO_TO_VIDEO the output format selector becomes irrelevant
+        containerBox.setEnabled(!isAudioToVideo);
+        revalidate();
+        repaint();
     }
 
     public Operation getSelectedOperation() {
@@ -89,17 +159,19 @@ public class AudioOptionsPanel extends JPanel {
             case 2 -> Operation.CONCAT;
             case 3 -> Operation.TRIM;
             case 4 -> Operation.NORMALIZE;
+            case 5 -> Operation.AUDIO_TO_VIDEO;
             default -> Operation.TRANSCODE;
         };
     }
 
     public void setSelectedOperation(Operation op) {
         int idx = switch (op) {
-            case EXTRACT_AUDIO -> 1;
-            case CONCAT        -> 2;
-            case TRIM          -> 3;
-            case NORMALIZE     -> 4;
-            default            -> 0;
+            case EXTRACT_AUDIO  -> 1;
+            case CONCAT         -> 2;
+            case TRIM           -> 3;
+            case NORMALIZE      -> 4;
+            case AUDIO_TO_VIDEO -> 5;
+            default             -> 0;
         };
         operationBox.setSelectedIndex(idx);
     }
@@ -133,10 +205,26 @@ public class AudioOptionsPanel extends JPanel {
         if (!ts.isEmpty()) ao.setTrimStart(ts);
         if (!te.isEmpty()) ao.setTrimEnd(te);
 
+        // Audio+Imagen → MP4
+        String imgPath = imagePathField.getText().trim();
+        if (!imgPath.isEmpty()) {
+            ao.setBackgroundImagePath(imgPath);
+        }
+        String resStr = (String) videoResBox.getSelectedItem();
+        if (resStr != null && !resStr.startsWith("Autom")) {
+            String dims = resStr.split(" ")[0];  // e.g. "1920x1080"
+            String[] parts = dims.split("x");
+            if (parts.length == 2) {
+                ao.setVideoWidth(Integer.parseInt(parts[0]));
+                ao.setVideoHeight(Integer.parseInt(parts[1]));
+            }
+        }
+
         return ao;
     }
 
     public String getOutputExtension() {
+        if (getSelectedOperation() == Operation.AUDIO_TO_VIDEO) return "mp4";
         String containerKey = (String) containerBox.getSelectedItem();
         if (containerKey == null) return "mp3";
         String ext = containerKey.contains("/") ? containerKey.split("/")[0].trim() : containerKey;

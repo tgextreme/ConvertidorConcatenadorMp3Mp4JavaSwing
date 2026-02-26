@@ -7,7 +7,8 @@ public enum Operation {
     CONCAT("Concatenar"),
     MUX("Mux (vídeo+audio)"),
     TRIM("Recortar"),
-    NORMALIZE("Normalizar Audio");
+    NORMALIZE("Normalizar Audio"),
+    AUDIO_TO_VIDEO("Audio+Imagen → MP4");
 
     private final String displayName;
 

@@ -13,6 +13,11 @@ public class AudioOptions implements Options {
     private String trimStart;  // hh:mm:ss or empty
     private String trimEnd;    // hh:mm:ss or empty
 
+    // Audio-to-video (image background)
+    private String backgroundImagePath; // absolute path to PNG/JPG/WEBP, or null
+    private int videoWidth;             // 0 = auto
+    private int videoHeight;            // 0 = auto
+
     public AudioOptions() {
         this.container = "mp3";
         this.codec = "libmp3lame";
@@ -41,6 +46,12 @@ public class AudioOptions implements Options {
     public void setTrimStart(String trimStart) { this.trimStart = trimStart; }
     public String getTrimEnd() { return trimEnd; }
     public void setTrimEnd(String trimEnd) { this.trimEnd = trimEnd; }
+    public String getBackgroundImagePath() { return backgroundImagePath; }
+    public void setBackgroundImagePath(String backgroundImagePath) { this.backgroundImagePath = backgroundImagePath; }
+    public int getVideoWidth() { return videoWidth; }
+    public void setVideoWidth(int videoWidth) { this.videoWidth = videoWidth; }
+    public int getVideoHeight() { return videoHeight; }
+    public void setVideoHeight(int videoHeight) { this.videoHeight = videoHeight; }
 
     public AudioOptions copy() {
         AudioOptions o = new AudioOptions();
@@ -52,6 +63,9 @@ public class AudioOptions implements Options {
         o.normalize = this.normalize;
         o.trimStart = this.trimStart;
         o.trimEnd = this.trimEnd;
+        o.backgroundImagePath = this.backgroundImagePath;
+        o.videoWidth = this.videoWidth;
+        o.videoHeight = this.videoHeight;
         return o;
     }
 }

@@ -12,8 +12,8 @@ class EnumsTest {
     // ── Operation ─────────────────────────────────────────────────────────────
 
     @Test
-    void operation_hasSevenValues() {
-        assertEquals(7, Operation.values().length);
+    void operation_hasEightValues() {
+        assertEquals(8, Operation.values().length);
     }
 
     @Test
