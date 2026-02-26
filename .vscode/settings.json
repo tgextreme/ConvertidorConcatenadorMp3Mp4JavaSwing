@@ -1,0 +1,25 @@
+{
+  "java.jdt.ls.java.home": "C:/Program Files/Java/jdk-21",
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.configuration.maven.userSettings": "",
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.project.sourcePaths": [
+    "src/main/java",
+    "src/test/java"
+  ],
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "C:/Program Files/Java/jdk-21",
+      "default": true
+    },
+    {
+      "name": "JavaSE-21",
+      "path": "C:/Program Files/Java/jdk-21"
+    }
+  ],
+  "code-runner.executorMap": {
+    "java": "cd \"$workspaceRoot\" && mvn -q -DskipTests package && java -jar target/ConvertidorUnificadorJavaSwing-0.0.1-SNAPSHOT.jar"
+  },
+  "code-runner.ignoreSelection": true
+}
