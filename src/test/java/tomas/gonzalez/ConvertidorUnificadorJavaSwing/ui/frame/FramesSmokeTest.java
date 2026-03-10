@@ -43,4 +43,34 @@ class FramesSmokeTest {
 
         dlg.dispose();
     }
+
+    @Test
+    void instantiateTrimVideoFrame_whenNotHeadless() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+
+        ConfigRepository.AppConfig cfg = new ConfigRepository.AppConfig();
+        QueueManagementUseCase queue = new QueueManagementUseCase(cfg);
+
+        TrimVideoFrame tf = new TrimVideoFrame(cfg, queue);
+
+        assertNotNull(tf);
+        tf.dispose();
+    }
+
+    @Test
+    void instantiateSilenceAudioFrame_whenNotHeadless() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+
+        ConfigRepository.AppConfig cfg = new ConfigRepository.AppConfig();
+        QueueManagementUseCase queue = new QueueManagementUseCase(cfg);
+
+        SilenceAudioFrame sf = new SilenceAudioFrame(cfg, queue);
+
+        assertNotNull(sf);
+        sf.dispose();
+    }
 }

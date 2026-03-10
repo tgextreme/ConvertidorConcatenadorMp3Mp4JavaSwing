@@ -39,14 +39,15 @@ public class ProgressParser {
     }
 
     private ProgressInfo buildInfo(String progressState) {
-        long outTimeMs = parseLong(current.getOrDefault("out_time_ms", "0")) / 1000;
+        long outTimeMs = parseOutTimeMs(current);
         long totalSize = parseLong(current.getOrDefault("total_size", "0"));
         double speed = parseDouble(current.getOrDefault("speed", "0x").replace("x", ""));
 
         int percent = -1;
         if (totalDurationMs > 0) {
             percent = (int) Math.min(100, (outTimeMs * 100L) / totalDurationMs);
-        } else if (progressState.equals("end")) {
+        }
+        if (progressState.equals("end")) {
             percent = 100;
         }
 
@@ -80,5 +81,43 @@ public class ProgressParser {
 
     private double parseDouble(String s) {
         try { return Double.parseDouble(s.trim()); } catch (Exception e) { return 0.0; }
+    }
+
+    private long parseOutTimeMs(Map<String, String> values) {
+        // Most FFmpeg builds emit out_time_ms in microseconds (legacy name).
+        String outTimeMsRaw = values.get("out_time_ms");
+        if (outTimeMsRaw != null && !outTimeMsRaw.isBlank()) {
+            long v = parseLong(outTimeMsRaw);
+            if (v > 0) return v / 1000;
+        }
+
+        // Newer builds emit out_time_us.
+        String outTimeUsRaw = values.get("out_time_us");
+        if (outTimeUsRaw != null && !outTimeUsRaw.isBlank()) {
+            long v = parseLong(outTimeUsRaw);
+            if (v > 0) return v / 1000;
+        }
+
+        // Last fallback: parse HH:MM:SS.micro from out_time.
+        String outTime = values.get("out_time");
+        if (outTime != null && !outTime.isBlank() && outTime.contains(":")) {
+            return parseClockToMs(outTime);
+        }
+
+        return 0L;
+    }
+
+    private long parseClockToMs(String clock) {
+        try {
+            String[] parts = clock.trim().split(":");
+            if (parts.length != 3) return 0L;
+            long hh = Long.parseLong(parts[0]);
+            long mm = Long.parseLong(parts[1]);
+            double ss = Double.parseDouble(parts[2]);
+            double totalSec = (hh * 3600.0) + (mm * 60.0) + ss;
+            return (long) (totalSec * 1000.0);
+        } catch (Exception ignored) {
+            return 0L;
+        }
     }
 }

@@ -7,6 +7,9 @@ import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.ConfigReposito
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg.FfmpegLocator;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.AudioFrame;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.FfmpegSetupDialog;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.SilenceAudioFrame;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.SilenceVideoFrame;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.TrimVideoFrame;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.VideoFrame;
 
 import javax.swing.*;
@@ -88,14 +91,20 @@ public class App {
         launcher.add(title, BorderLayout.NORTH);
 
         // Botones
-        JPanel btnPanel = new JPanel(new GridLayout(2, 1, 12, 12));
+        JPanel btnPanel = new JPanel(new GridLayout(5, 1, 12, 12));
         btnPanel.setBorder(BorderFactory.createEmptyBorder(10, 40, 10, 40));
 
-        JButton audioBtn = new JButton("🎵  Abrir módulo de AUDIO");
-        JButton videoBtn = new JButton("🎬  Abrir módulo de VÍDEO");
+        JButton audioBtn      = new JButton("🎵  Abrir módulo de AUDIO");
+        JButton videoBtn      = new JButton("🎬  Abrir módulo de VÍDEO");
+        JButton trimBtn       = new JButton("✂  Recortador de VÍDEO");
+        JButton silenceVidBtn = new JButton("🔇  Recortador de Silencios de VÍDEO");
+        JButton silenceAudBtn = new JButton("🔇  Recortador de Silencios de AUDIO");
 
-        styleMainBtn(audioBtn, new Color(60, 120, 255));
-        styleMainBtn(videoBtn, new Color(120, 60, 220));
+        styleMainBtn(audioBtn,      new Color(60, 120, 255));
+        styleMainBtn(videoBtn,      new Color(120, 60, 220));
+        styleMainBtn(trimBtn,       new Color(40, 170, 130));
+        styleMainBtn(silenceVidBtn, new Color(30, 140, 200));
+        styleMainBtn(silenceAudBtn, new Color(200, 100, 30));
 
         audioBtn.addActionListener(e -> {
             AudioFrame af = new AudioFrame(config, sharedQueue);
@@ -109,8 +118,29 @@ public class App {
             checkFfmpeg(vf, config, sharedQueue);
         });
 
+        trimBtn.addActionListener(e -> {
+            TrimVideoFrame tf = new TrimVideoFrame(config, sharedQueue);
+            tf.setVisible(true);
+            checkFfmpeg(tf, config, sharedQueue);
+        });
+
+        silenceVidBtn.addActionListener(e -> {
+            SilenceVideoFrame svf = new SilenceVideoFrame(config, sharedQueue);
+            svf.setVisible(true);
+            checkFfmpeg(svf, config, sharedQueue);
+        });
+
+        silenceAudBtn.addActionListener(e -> {
+            SilenceAudioFrame sf = new SilenceAudioFrame(config, sharedQueue);
+            sf.setVisible(true);
+            checkFfmpeg(sf, config, sharedQueue);
+        });
+
         btnPanel.add(audioBtn);
         btnPanel.add(videoBtn);
+        btnPanel.add(trimBtn);
+        btnPanel.add(silenceVidBtn);
+        btnPanel.add(silenceAudBtn);
         launcher.add(btnPanel, BorderLayout.CENTER);
 
         // FFmpeg status bar

@@ -340,4 +340,167 @@ class FfmpegCommandBuilderTest {
             );
         }
     }
+
+    // ── SILENCE DETECT ────────────────────────────────────────────────────────
+
+    private Job silenceJob(boolean audioOnly) {
+        MediaItem item = new MediaItem(inputPath);
+        SilenceRemoveOptions opts = new SilenceRemoveOptions();
+        opts.setAudioOnly(audioOnly);
+        MediaType type = audioOnly ? MediaType.AUDIO : MediaType.VIDEO;
+        return new Job(type, Operation.SILENCE_REMOVE, java.util.Arrays.asList(item), outputPath, opts);
+    }
+
+    @Test
+    void buildSilenceDetectCommand_singleTrack_mapsDirectly() {
+        Job job = silenceJob(false);
+        List<String> cmd = builder.buildSilenceDetectCommand(job);
+
+        assertEquals(FFMPEG, cmd.get(0));
+        assertContainsSequence(cmd, "-map", "0:a:0");
+        assertContainsSequence(cmd, "-af", "silencedetect=n=-30.0dB:d=0.5");
+        assertContainsSequence(cmd, "-f", "null");
+        assertTrue(cmd.contains("-"), "Must end with '-' (null sink)");
+    }
+
+    @Test
+    void buildSilenceDetectCommand_multipleTracks_usesAmix() {
+        MediaItem item = new MediaItem(inputPath);
+        SilenceRemoveOptions opts = new SilenceRemoveOptions();
+        opts.setAudioStreamIndices(java.util.Arrays.asList(0, 1, 2));
+        Job job = new Job(MediaType.VIDEO, Operation.SILENCE_REMOVE,
+                java.util.Arrays.asList(item), outputPath, opts);
+
+        List<String> cmd = builder.buildSilenceDetectCommand(job);
+
+        assertTrue(cmd.contains("-filter_complex"), "Multi-track must use -filter_complex");
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        assertTrue(fc.contains("amix=inputs=3"), "Must use amix=inputs=3 for 3 tracks");
+        assertTrue(fc.contains("silencedetect="), "silencedetect must be inside filter_complex");
+        assertTrue(fc.contains("[adet]"), "Must output [adet]");
+        assertContainsSequence(cmd, "-map", "[adet]");
+        assertFalse(cmd.contains("-af"), "Must NOT use -af when filter_complex is used");
+    }
+
+    @Test
+    void buildSilenceDetectCommand_twoTracks_mixes2Inputs() {
+        MediaItem item = new MediaItem(inputPath);
+        SilenceRemoveOptions opts = new SilenceRemoveOptions();
+        opts.setAudioStreamIndices(java.util.Arrays.asList(0, 1));
+        Job job = new Job(MediaType.VIDEO, Operation.SILENCE_REMOVE,
+                java.util.Arrays.asList(item), outputPath, opts);
+
+        List<String> cmd = builder.buildSilenceDetectCommand(job);
+
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        assertTrue(fc.contains("[0:a:0][0:a:1]amix=inputs=2"), "Must include both track references");
+    }
+
+    // ── SILENCE REMOVE ────────────────────────────────────────────────────────
+
+    @Test
+    void buildSilenceRemoveCommand_audioOnly_singleSegment_noVideoFlags() {
+        Job job = silenceJob(true);
+        List<double[]> segs = java.util.List.of(new double[]{5.0, 30.0});
+
+        List<String> cmd = builder.buildSilenceRemoveCommand(job, segs);
+
+        assertEquals(FFMPEG, cmd.get(0));
+        assertFalse(cmd.contains("-c:v"),  "Audio-only must not have -c:v");
+        assertFalse(cmd.contains("-crf"),  "Audio-only must not have -crf");
+        assertFalse(cmd.contains("-preset"), "Audio-only must not have -preset");
+        assertContainsSequence(cmd, "-ss", "5.0000");
+        assertContainsSequence(cmd, "-t",  "25.0000");
+        assertContainsSequence(cmd, "-map", "0:a:0");
+        assertTrue(cmd.contains("-c:a"), "Must have -c:a");
+        assertEquals(outputPath.toAbsolutePath().toString(), cmd.get(cmd.size() - 1));
+    }
+
+    @Test
+    void buildSilenceRemoveCommand_audioOnly_noStart_noSsFlag() {
+        Job job = silenceJob(true);
+        // Segment starting at 0.0 should NOT add -ss
+        List<double[]> segs = java.util.List.of(new double[]{0.0, 10.0});
+
+        List<String> cmd = builder.buildSilenceRemoveCommand(job, segs);
+
+        assertFalse(cmd.contains("-ss"), "Start=0 must not emit -ss");
+    }
+
+    @Test
+    void buildSilenceRemoveCommand_audioOnly_multipleSegments_filterConcatV0() {
+        Job job = silenceJob(true);
+        List<double[]> segs = java.util.List.of(
+            new double[]{0.0, 10.0},
+            new double[]{20.0, 35.0}
+        );
+
+        List<String> cmd = builder.buildSilenceRemoveCommand(job, segs);
+
+        assertTrue(cmd.contains("-filter_complex"), "Multi-segment must use -filter_complex");
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        assertTrue(fc.contains("concat=n=2:v=0:a=1"), "Audio-only concat must have v=0");
+        assertTrue(fc.contains("[aout]"), "Must produce [aout]");
+        assertContainsSequence(cmd, "-map", "[aout]");
+        assertFalse(cmd.contains("-c:v"), "Audio-only must not have -c:v");
+        assertEquals(outputPath.toAbsolutePath().toString(), cmd.get(cmd.size() - 1));
+    }
+
+    @Test
+    void buildSilenceRemoveCommand_video_singleSegment_mapsVideoAndAudio() {
+        Job job = silenceJob(false);
+        List<double[]> segs = java.util.List.of(new double[]{2.0, 60.0});
+
+        List<String> cmd = builder.buildSilenceRemoveCommand(job, segs);
+
+        assertContainsSequence(cmd, "-map", "0:v:0");
+        assertContainsSequence(cmd, "-map", "0:a:0");
+        assertContainsSequence(cmd, "-c:v", "libx264");
+        assertTrue(cmd.contains("-c:a"));
+        assertEquals(outputPath.toAbsolutePath().toString(), cmd.get(cmd.size() - 1));
+    }
+
+    @Test
+    void buildSilenceRemoveCommand_video_multipleSegments_usesFilterComplexWithVideo() {
+        Job job = silenceJob(false);
+        List<double[]> segs = java.util.List.of(
+            new double[]{0.0, 10.0},
+            new double[]{20.0, 35.0},
+            new double[]{50.0, Double.MAX_VALUE}
+        );
+
+        List<String> cmd = builder.buildSilenceRemoveCommand(job, segs);
+
+        assertTrue(cmd.contains("-filter_complex"), "Multi-segment video must use -filter_complex");
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        assertTrue(fc.contains("concat=n=3:v=1:a=1"), "Video concat must have v=1 and n=3");
+        assertTrue(fc.contains("[vout]"), "Must produce [vout]");
+        assertContainsSequence(cmd, "-map", "[vout]");
+        assertContainsSequence(cmd, "-map", "[aout0]");
+        assertEquals(outputPath.toAbsolutePath().toString(), cmd.get(cmd.size() - 1));
+    }
+
+    @Test
+    void buildSilenceRemoveCommand_video_openEndSegment_noEndInTrim() {
+        Job job = silenceJob(false);
+        // MAX_VALUE end means "to end of file" → no :end= in trim filter
+        List<double[]> segs = java.util.List.of(
+            new double[]{0.0, 10.0},
+            new double[]{20.0, Double.MAX_VALUE}
+        );
+
+        List<String> cmd = builder.buildSilenceRemoveCommand(job, segs);
+
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        // The last segment has no :end= in its trim
+        long endCount = java.util.Arrays.stream(fc.split(";"))
+            .filter(s -> s.contains("trim=start=") && !s.contains(":end="))
+            .count();
+        assertTrue(endCount >= 1, "Open-end segment must NOT contain :end= in trim");
+    }
 }

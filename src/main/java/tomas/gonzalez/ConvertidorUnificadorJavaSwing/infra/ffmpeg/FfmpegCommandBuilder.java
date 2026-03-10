@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Builds FFmpeg command-line argument lists from a Job.
@@ -34,6 +35,8 @@ public class FfmpegCommandBuilder {
             case TRIM           -> buildTrim(job);
             case NORMALIZE      -> buildNormalize(job);
             case AUDIO_TO_VIDEO -> buildAudioToVideo(job);
+            case SILENCE_REMOVE -> throw new UnsupportedOperationException(
+                "SILENCE_REMOVE uses buildSilenceDetectCommand / buildSilenceRemoveCommand");
         };
     }
 
@@ -43,6 +46,7 @@ public class FfmpegCommandBuilder {
         cmd.add(ffmpegPath);
         cmd.add("-y");
         cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
         cmd.add("-i"); cmd.add(job.getInputs().get(0).getPath().toAbsolutePath().toString());
 
@@ -60,6 +64,7 @@ public class FfmpegCommandBuilder {
     private List<String> buildRemux(Job job) {
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
         cmd.add("-i"); cmd.add(job.getInputs().get(0).getPath().toAbsolutePath().toString());
         cmd.add("-c"); cmd.add("copy");
@@ -71,6 +76,7 @@ public class FfmpegCommandBuilder {
     private List<String> buildExtractAudio(Job job) {
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
         cmd.add("-i"); cmd.add(job.getInputs().get(0).getPath().toAbsolutePath().toString());
         cmd.add("-vn");
@@ -113,6 +119,7 @@ public class FfmpegCommandBuilder {
 
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
         cmd.add("-f"); cmd.add("concat");
         cmd.add("-safe"); cmd.add("0");
@@ -144,6 +151,7 @@ public class FfmpegCommandBuilder {
 
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
 
         for (MediaItem item : job.getInputs()) {
@@ -205,6 +213,7 @@ public class FfmpegCommandBuilder {
         // Expects exactly 2 inputs: video + audio
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
         for (MediaItem item : job.getInputs()) {
             cmd.add("-i"); cmd.add(item.getPath().toAbsolutePath().toString());
@@ -222,6 +231,7 @@ public class FfmpegCommandBuilder {
     private List<String> buildTrim(Job job) {
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
 
         String start = null, end = null;
@@ -251,6 +261,7 @@ public class FfmpegCommandBuilder {
     private List<String> buildNormalize(Job job) {
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
         cmd.add("-i"); cmd.add(job.getInputs().get(0).getPath().toAbsolutePath().toString());
         cmd.add("-af"); cmd.add("loudnorm");
@@ -315,6 +326,7 @@ public class FfmpegCommandBuilder {
         cmd.add(ffmpegPath);
         cmd.add("-y");
         cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
         cmd.add("-progress"); cmd.add("pipe:1");
 
         // Input 0: static image (loop indefinitely until audio ends)
@@ -423,5 +435,223 @@ public class FfmpegCommandBuilder {
         if (vo.getAudioBitrateKbps() > 0 && !"copy".equals(vo.getAudioCodec())) {
             cmd.add("-b:a"); cmd.add(vo.getAudioBitrateKbps() + "k");
         }
+    }
+
+    // ---------------------------------------------------------------- SILENCE DETECT (pass 1)
+
+    /**
+     * Builds the ffmpeg command that runs the silencedetect filter and writes analysis
+     * to stderr. Output is discarded (-f null -).
+     * Call this for the first pass of the SILENCE_REMOVE operation.
+     */
+    public List<String> buildSilenceDetectCommand(Job job) {
+        tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.SilenceRemoveOptions opts =
+            (tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.SilenceRemoveOptions) job.getOptions();
+        String input = job.getInputs().get(0).getPath().toAbsolutePath().toString();
+        List<Integer> indices = opts.getAudioStreamIndices();
+        if (indices == null || indices.isEmpty()) indices = java.util.List.of(0);
+        String threshold = String.valueOf(opts.getThresholdDb());
+        String minDur    = String.valueOf(opts.getMinSilenceDuration());
+        String filter    = "silencedetect=n=" + threshold + "dB:d=" + minDur;
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(ffmpegPath);
+        cmd.add("-hide_banner");
+        cmd.add("-i"); cmd.add(input);
+
+        if (indices.size() == 1) {
+            // Single track — map directly
+            cmd.add("-map"); cmd.add("0:a:" + indices.get(0));
+            cmd.add("-af"); cmd.add(filter);
+        } else {
+            // Multiple tracks — mix with amix and chain silencedetect inside filter_complex
+            // (cannot use -af on a stream that comes from a complex filtergraph)
+            StringBuilder fc = new StringBuilder();
+            for (int idx : indices) {
+                fc.append("[0:a:").append(idx).append("]");
+            }
+            fc.append("amix=inputs=").append(indices.size())
+              .append(":duration=longest,").append(filter).append("[adet]");
+            cmd.add("-filter_complex"); cmd.add(fc.toString());
+            cmd.add("-map"); cmd.add("[adet]");
+        }
+        cmd.add("-f"); cmd.add("null");
+        cmd.add("-");
+        return cmd;
+    }
+
+    // ---------------------------------------------------------------- SILENCE REMOVE (pass 2)
+
+    /**
+     * Builds the ffmpeg command that cuts and re-joins the non-silent segments stored in
+     * {@code keepSegments}. Each element is a {@code double[2]}: [startSec, endSec] where
+     * endSec == {@link Double#MAX_VALUE} means "to the end of the file".
+     *
+     * Uses filter_complex with trim/atrim+setpts+asetpts for each segment, then
+     * the concat filter to join them all.
+     */
+    public List<String> buildSilenceRemoveCommand(Job job, List<double[]> keepSegments) {
+        tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.SilenceRemoveOptions opts =
+            (tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.SilenceRemoveOptions) job.getOptions();
+        String input = job.getInputs().get(0).getPath().toAbsolutePath().toString();
+        List<Integer> audioIndices = opts.getAudioStreamIndices();
+        if (audioIndices == null || audioIndices.isEmpty()) audioIndices = java.util.List.of(0);
+        int numAudio = audioIndices.size();
+        int n = keepSegments.size();
+        boolean audioOnly = opts.isAudioOnly();
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(ffmpegPath);
+        cmd.add("-y");
+        cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
+        cmd.add("-progress"); cmd.add("pipe:1");
+        cmd.add("-i"); cmd.add(input);
+
+        if (audioOnly) {
+            // ---- Audio-only path (MP3, AAC, etc. — no video stream) ----
+            if (n == 1) {
+                double[] seg = keepSegments.get(0);
+                double start = seg[0];
+                double end   = seg[1];
+                if (start > 0) { cmd.add("-ss"); cmd.add(String.format(Locale.US, "%.4f", start)); }
+                if (end < Double.MAX_VALUE) { cmd.add("-t"); cmd.add(String.format(Locale.US, "%.4f", end - start)); }
+                cmd.add("-map"); cmd.add("0:a:0");
+            } else {
+                // filter_complex: atrim each segment, concat audio-only
+                StringBuilder fc = new StringBuilder();
+                for (int i = 0; i < n; i++) {
+                    double start = keepSegments.get(i)[0];
+                    double end   = keepSegments.get(i)[1];
+                    boolean hasEnd = end < Double.MAX_VALUE;
+                    fc.append("[0:a:0]atrim=start=").append(String.format(Locale.US, "%.4f", start));
+                    if (hasEnd) fc.append(":end=").append(String.format(Locale.US, "%.4f", end));
+                    fc.append(",asetpts=PTS-STARTPTS[a").append(i).append("];");
+                }
+                for (int i = 0; i < n; i++) fc.append("[a").append(i).append("]");
+                fc.append("concat=n=").append(n).append(":v=0:a=1[aout]");
+                cmd.add("-filter_complex"); cmd.add(fc.toString());
+                cmd.add("-map"); cmd.add("[aout]");
+            }
+        } else {
+            // ---- Video path (with video stream) ----
+            if (n == 1) {
+                // Simple single-trim — no concat needed
+                double[] seg = keepSegments.get(0);
+                double start = seg[0];
+                double end   = seg[1];
+
+                if (start > 0) { cmd.add("-ss"); cmd.add(String.format(Locale.US, "%.4f", start)); }
+                if (end < Double.MAX_VALUE) {
+                    cmd.add("-t");  cmd.add(String.format(Locale.US, "%.4f", end - start));
+                }
+                cmd.add("-map"); cmd.add("0:v:0");
+                for (int idx : audioIndices) {
+                    cmd.add("-map"); cmd.add("0:a:" + idx);
+                }
+            } else {
+                // Multiple segments — filter_complex trim + concat for all selected audio tracks
+                StringBuilder fc = new StringBuilder();
+                for (int i = 0; i < n; i++) {
+                    double start = keepSegments.get(i)[0];
+                    double end   = keepSegments.get(i)[1];
+                    boolean hasEnd = end < Double.MAX_VALUE;
+
+                    // Video segment
+                    fc.append("[0:v]trim=start=").append(String.format(Locale.US, "%.4f", start));
+                    if (hasEnd) fc.append(":end=").append(String.format(Locale.US, "%.4f", end));
+                    fc.append(",setpts=PTS-STARTPTS[v").append(i).append("];");
+
+                    // Each selected audio track
+                    for (int j = 0; j < numAudio; j++) {
+                        int audioIdx = audioIndices.get(j);
+                        fc.append("[0:a:").append(audioIdx).append("]atrim=start=")
+                          .append(String.format(Locale.US, "%.4f", start));
+                        if (hasEnd) fc.append(":end=").append(String.format(Locale.US, "%.4f", end));
+                        fc.append(",asetpts=PTS-STARTPTS[a").append(j).append("_").append(i).append("];");
+                    }
+                }
+
+                // Concat input list: [v0][a0_0][a1_0][v1][a0_1][a1_1]...
+                for (int i = 0; i < n; i++) {
+                    fc.append("[v").append(i).append("]");
+                    for (int j = 0; j < numAudio; j++) {
+                        fc.append("[a").append(j).append("_").append(i).append("]");
+                    }
+                }
+                fc.append("concat=n=").append(n)
+                  .append(":v=1:a=").append(numAudio)
+                  .append("[vout]");
+                for (int j = 0; j < numAudio; j++) {
+                    fc.append("[aout").append(j).append("]");
+                }
+
+                cmd.add("-filter_complex"); cmd.add(fc.toString());
+                cmd.add("-map"); cmd.add("[vout]");
+                for (int j = 0; j < numAudio; j++) {
+                    cmd.add("-map"); cmd.add("[aout" + j + "]");
+                }
+            }
+
+            // Video encoding (only for video path)
+            String vCodec = opts.getVideoCodec() != null ? opts.getVideoCodec() : "libx264";
+            cmd.add("-c:v");  cmd.add(vCodec);
+            cmd.add("-crf");  cmd.add(String.valueOf(opts.getCrf()));
+            String preset = opts.getVideoPreset();
+            if (preset != null && !preset.isEmpty()
+                    && (vCodec.contains("x264") || vCodec.contains("x265"))) {
+                cmd.add("-preset"); cmd.add(preset);
+            }
+        }
+
+        // Audio encoding (both paths)
+        String aCodec = opts.getAudioCodec() != null ? opts.getAudioCodec() : "aac";
+        cmd.add("-c:a"); cmd.add(aCodec);
+        if (opts.getAudioBitrateKbps() > 0) {
+            cmd.add("-b:a"); cmd.add(opts.getAudioBitrateKbps() + "k");
+        }
+
+        cmd.add(job.getOutput().toAbsolutePath().toString());
+        return cmd;
+    }
+
+    // ---------------------------------------------------------------- SILENCE REMOVE (segment-copy)
+
+    /**
+     * Builds an ffmpeg command that stream-copies the portion of {@code input} between
+     * {@code startSec} and {@code endSec} (both in source-file seconds) into {@code output}.
+     *
+     * Both -ss and -to are passed as INPUT options (before -i) so FFmpeg does a fast
+     * keyframe seek to startSec and stops reading at the exact source PTS endSec.
+     * This mirrors the PS-script pattern: ffmpeg -ss START -to END -i INPUT -c copy OUTPUT
+     * and avoids the truncation / overlap artifacts caused by using -t (output duration).
+     *
+     * Only the video stream (if not audioOnly) and the explicitly selected audio tracks are
+     * mapped, so unrelated audio tracks are never included in the segment files.
+     */
+    public List<String> buildSilenceSegmentExtractCommand(
+            String input, double startSec, double endSec, Path output,
+            boolean audioOnly, List<Integer> audioStreamIndices) {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(ffmpegPath);
+        cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
+        cmd.add("-progress"); cmd.add("pipe:1");
+        // -ss and -to as INPUT options: fast seek + accurate end cut in source timestamps
+        cmd.add("-ss"); cmd.add(String.format(Locale.US, "%.4f", startSec));
+        cmd.add("-to"); cmd.add(String.format(Locale.US, "%.4f", endSec));
+        cmd.add("-i"); cmd.add(input);
+        if (!audioOnly) {
+            cmd.add("-map"); cmd.add("0:v");
+        }
+        List<Integer> indices = (audioStreamIndices != null && !audioStreamIndices.isEmpty())
+            ? audioStreamIndices : java.util.List.of(0);
+        for (int idx : indices) {
+            cmd.add("-map"); cmd.add("0:a:" + idx);
+        }
+        cmd.add("-c"); cmd.add("copy");
+        cmd.add("-avoid_negative_ts"); cmd.add("make_zero");
+        cmd.add(output.toAbsolutePath().toString());
+        return cmd;
     }
 }

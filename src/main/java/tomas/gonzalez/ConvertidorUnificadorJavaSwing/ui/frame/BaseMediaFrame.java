@@ -147,6 +147,7 @@ public abstract class BaseMediaFrame extends JFrame {
             inputListPanel.refreshItem(e.mediaItem());
             logPanel.info("Inspeccionado: " + e.mediaItem().getFileName() +
                 " [" + e.mediaItem().getFormattedDuration() + "]");
+            onMediaItemInspected(e.mediaItem());
         });
 
         EventBus.get().subscribe(JobQueuedEvent.class, e -> {
@@ -298,6 +299,9 @@ public abstract class BaseMediaFrame extends JFrame {
             logPanel.info("FFmpeg configurado: " + config.ffmpegPath);
         }
     }
+
+    /** Called on the EDT after a media item is fully inspected. Subclasses can override. */
+    protected void onMediaItemInspected(MediaItem item) {}
 
     /** Subclass provides the specific options panel. */
     protected abstract JComponent createOptionsPanel();

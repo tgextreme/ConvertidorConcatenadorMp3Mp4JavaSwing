@@ -1,4 +1,43 @@
+# Build artifacts
 target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Native binaries bundled locally (do not commit ffmpeg/ffprobe)
 bin/*.exe
 bin/*.dll
-*.class
+bin/*.so
+bin/*.dylib
+
+# Logs and runtime dumps
+*.log
+*.out
+*.err
+hs_err_pid*
+replay_pid*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / editor
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# VS Code local workspace files
+.vscode/*.log
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# App local config/output (if generated outside source tree)
+config.json
+jobs-history.json

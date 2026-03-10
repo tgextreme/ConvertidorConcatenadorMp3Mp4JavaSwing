@@ -1,6 +1,8 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MediaItem {
 
@@ -14,6 +16,8 @@ public class MediaItem {
     private String channels;
     private long fileSizeBytes;
     private boolean inspected;
+    /** All audio streams found by ffprobe. Populated after inspection. */
+    private List<AudioStreamInfo> audioStreams = new ArrayList<>();
 
     public MediaItem(Path path) {
         this.path = path;
@@ -41,6 +45,8 @@ public class MediaItem {
     public void setFileSizeBytes(long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
     public boolean isInspected() { return inspected; }
     public void setInspected(boolean inspected) { this.inspected = inspected; }
+    public List<AudioStreamInfo> getAudioStreams() { return audioStreams; }
+    public void setAudioStreams(List<AudioStreamInfo> audioStreams) { this.audioStreams = audioStreams != null ? audioStreams : new ArrayList<>(); }
 
     public String getFormattedDuration() {
         if (durationMs <= 0) return "?";

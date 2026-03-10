@@ -8,7 +8,8 @@ public enum Operation {
     MUX("Mux (vídeo+audio)"),
     TRIM("Recortar"),
     NORMALIZE("Normalizar Audio"),
-    AUDIO_TO_VIDEO("Audio+Imagen → MP4");
+    AUDIO_TO_VIDEO("Audio+Imagen → MP4"),
+    SILENCE_REMOVE("Recortar Silencios");
 
     private final String displayName;
 

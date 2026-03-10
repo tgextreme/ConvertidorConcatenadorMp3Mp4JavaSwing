@@ -1,12 +1,15 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel;
 
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.AudioStreamInfo;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.Operation;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.SilenceRemoveOptions;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions.BitrateMode;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions.Orientation;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.List;
 
 /**
  * Options panel for video operations.
@@ -14,7 +17,7 @@ import java.awt.*;
 public class VideoOptionsPanel extends JPanel {
 
     private static final String[] OPERATIONS = {
-        "Transcodificar", "Remux", "Extraer Audio", "Concatenar", "Mux (vídeo+audio)", "Recortar"
+        "Transcodificar", "Remux", "Extraer Audio", "Concatenar", "Mux (vídeo+audio)", "Recortar", "Recortar Silencios"
     };
     private static final String[] V_CODECS = {"libx264", "libx265", "libvpx-vp9", "libaom-av1", "copy"};
     private static final String[] A_CODECS = {"aac", "libopus", "libmp3lame", "copy"};
@@ -30,15 +33,17 @@ public class VideoOptionsPanel extends JPanel {
     private final JRadioButton crfRadio = new JRadioButton("CRF:", true);
     private final JRadioButton bitrateRadio = new JRadioButton("Bitrate (kbps):");
     private final JSpinner crfSpinner = new JSpinner(new SpinnerNumberModel(23, 0, 51, 1));
-    private final JSpinner videoBitrateSpinner = new JSpinner(new SpinnerNumberModel(2000, 100, 50000, 100));
+    private final JSpinner videoBitrateSpinner = new JSpinner(new SpinnerNumberModel(3000, 100, 50000, 100));
     private final JComboBox<String> presetBox = new JComboBox<>(PRESETS);
     private final JSpinner widthSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 7680, 2));
     private final JSpinner heightSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 4320, 2));
-    private final JSpinner fpsSpinner = new JSpinner(new SpinnerNumberModel(0.0, 0.0, 240.0, 1.0));
+    private final JSpinner fpsSpinner = new JSpinner(new SpinnerNumberModel(60.0, 0.0, 240.0, 1.0));
     private final JComboBox<String> aCodecBox = new JComboBox<>(A_CODECS);
     private final JSpinner audioBitrateSpinner = new JSpinner(new SpinnerNumberModel(128, 32, 1411, 32));
     private final JTextField trimStartField = new JTextField("", 8);
     private final JTextField trimEndField = new JTextField("", 8);
+
+    private final SilenceRemovePanel silencePanel = new SilenceRemovePanel();
 
     public VideoOptionsPanel() {
         setLayout(new GridBagLayout());
@@ -79,11 +84,24 @@ public class VideoOptionsPanel extends JPanel {
         addRow(gc, row++, "Trim inicio:", trimStartField);
         addRow(gc, row++, "Trim fin:", trimEndField);
 
+        // Silence Remove panel — span both columns, hidden unless operation == SILENCE_REMOVE
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 2; gc.weightx = 1;
+        add(silencePanel, gc);
+        gc.gridwidth = 1;
+        silencePanel.setVisible(false);
+
         presetBox.setSelectedItem("medium");
 
         crfRadio.addActionListener(e -> { crfSpinner.setEnabled(true); videoBitrateSpinner.setEnabled(false); });
         bitrateRadio.addActionListener(e -> { crfSpinner.setEnabled(false); videoBitrateSpinner.setEnabled(true); });
         videoBitrateSpinner.setEnabled(false);
+
+        operationBox.addItemListener(evt -> {
+            boolean isSilence = operationBox.getSelectedIndex() == 6;
+            silencePanel.setVisible(isSilence);
+            revalidate();
+            repaint();
+        });
     }
 
     private void addRow(GridBagConstraints gc, int row, String label, JComponent comp) {
@@ -98,18 +116,20 @@ public class VideoOptionsPanel extends JPanel {
             case 3 -> Operation.CONCAT;
             case 4 -> Operation.MUX;
             case 5 -> Operation.TRIM;
+            case 6 -> Operation.SILENCE_REMOVE;
             default -> Operation.TRANSCODE;
         };
     }
 
     public void setSelectedOperation(Operation op) {
         int idx = switch (op) {
-            case REMUX         -> 1;
-            case EXTRACT_AUDIO -> 2;
-            case CONCAT        -> 3;
-            case MUX           -> 4;
-            case TRIM          -> 5;
-            default            -> 0;
+            case REMUX          -> 1;
+            case EXTRACT_AUDIO  -> 2;
+            case CONCAT         -> 3;
+            case MUX            -> 4;
+            case TRIM           -> 5;
+            case SILENCE_REMOVE -> 6;
+            default             -> 0;
         };
         operationBox.setSelectedIndex(idx);
     }
@@ -137,7 +157,18 @@ public class VideoOptionsPanel extends JPanel {
     }
 
     public String getOutputExtension() {
+        if (getSelectedOperation() == Operation.SILENCE_REMOVE) {
+            return silencePanel.getOutputExtension();
+        }
         String c = (String) containerBox.getSelectedItem();
         return c != null ? c : "mp4";
+    }
+
+    public void setSilenceAudioStreams(List<AudioStreamInfo> streams) {
+        silencePanel.setAudioStreams(streams);
+    }
+
+    public SilenceRemoveOptions buildSilenceRemoveOptions() {
+        return silencePanel.buildOptions();
     }
 }

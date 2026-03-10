@@ -11,6 +11,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -43,9 +44,30 @@ public class VideoFrame extends BaseMediaFrame {
     }
 
     @Override
+    protected void onMediaItemInspected(MediaItem item) {
+        ensureOptionsPanel();
+        List<AudioStreamInfo> streams = item.getAudioStreams();
+        if (streams != null && !streams.isEmpty()) {
+            optionsPanel.setSilenceAudioStreams(streams);
+        }
+    }
+
+    @Override
     protected Job createJob(Path outputPath) {
         ensureOptionsPanel();
         Operation op = optionsPanel.getSelectedOperation();
+
+        // Silence removal: single input, 2-pass pipeline
+        if (op == Operation.SILENCE_REMOVE) {
+            if (inputs().size() != 1) {
+                JOptionPane.showMessageDialog(this,
+                    "Recortar Silencios requiere exactamente 1 archivo de entrada.",
+                    "Validación", JOptionPane.WARNING_MESSAGE);
+                return null;
+            }
+            SilenceRemoveOptions opts = optionsPanel.buildSilenceRemoveOptions();
+            return new Job(MediaType.VIDEO, Operation.SILENCE_REMOVE, inputs(), outputPath, opts);
+        }
 
         // For EXTRACT_AUDIO from video
         if (op == Operation.EXTRACT_AUDIO) {

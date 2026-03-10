@@ -22,6 +22,11 @@ public class ConfigRepository {
         public boolean overwriteByDefault = false;
         public String lastAudioContainer = "mp3";
         public String lastVideoContainer = "mp4";
+        // Silence remover defaults (video)
+        public double silenceThresholdDb = -30.0;
+        public double silenceMinDurationSec = 0.50;
+        public double silencePaddingSec = 0.05;
+        public boolean silenceFastMode = true;
     }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

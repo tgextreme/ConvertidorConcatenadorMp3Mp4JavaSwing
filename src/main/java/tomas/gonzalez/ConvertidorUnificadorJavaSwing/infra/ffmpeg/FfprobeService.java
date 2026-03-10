@@ -1,5 +1,6 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg;
 
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.AudioStreamInfo;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.MediaItem;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.MediaType;
 
@@ -7,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -112,5 +114,52 @@ public class FfprobeService {
         }
 
         item.setInspected(true);
+        parseAudioStreams(output.toString(), item);
+    }
+
+    /**
+     * Parses all audio streams from the ffprobe plain-text output and stores them in the item.
+     * Sections are delimited by [STREAM]...[/STREAM] blocks.
+     */
+    private void parseAudioStreams(String output, MediaItem item) {
+        List<AudioStreamInfo> streams = new ArrayList<>();
+        int audioIndex = 0;
+
+        // Split into STREAM sections; keep the content between [STREAM] and [/STREAM]
+        String[] sections = output.split("\\[STREAM\\]");
+        for (String section : sections) {
+            if (!section.contains("codec_type=audio")) continue;
+
+            AudioStreamInfo info = new AudioStreamInfo();
+            info.setAudioIndex(audioIndex++);
+
+            Matcher abIdx = Pattern.compile("(?m)^index=(\\d+)").matcher(section);
+            if (abIdx.find()) info.setAbsoluteIndex(Integer.parseInt(abIdx.group(1)));
+
+            Matcher codec = Pattern.compile("(?m)^codec_name=(\\S+)").matcher(section);
+            if (codec.find()) info.setCodec(codec.group(1));
+
+            Matcher sr = Pattern.compile("(?m)^sample_rate=(\\d+)").matcher(section);
+            if (sr.find()) info.setSampleRate(sr.group(1) + " Hz");
+
+            Matcher ch = Pattern.compile("(?m)^channels=(\\d+)").matcher(section);
+            if (ch.find()) {
+                String chVal = ch.group(1);
+                info.setChannels("1".equals(chVal) ? "Mono" : "2".equals(chVal) ? "Estéreo" : chVal + "ch");
+            }
+
+            // Language tag (TAG:language= or tag:language=)
+            Matcher lang = Pattern.compile("(?im)^TAG:language=(\\S+)").matcher(section);
+            if (lang.find()) {
+                String l = lang.group(1);
+                if (!"und".equalsIgnoreCase(l)) info.setLanguage(l);
+            }
+
+            streams.add(info);
+        }
+
+        if (!streams.isEmpty()) {
+            item.setAudioStreams(streams);
+        }
     }
 }
