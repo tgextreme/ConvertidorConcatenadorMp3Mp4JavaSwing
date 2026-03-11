@@ -10,6 +10,7 @@ import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.JobHistoryRepo
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.PresetRepository;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg.FfmpegLocator;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.AudioFrame;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.AppIconLoader;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.BulkAudioFrame;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.BulkVideoFrame;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame.FfmpegSetupDialog;
@@ -95,6 +96,7 @@ public class App {
     private static void showLauncher(AppConfig config, QueueManagementUseCase sharedQueue,
                                      PresetUseCase presetUseCase) {
         JFrame launcher = new JFrame("Convertidor & Unificador AV");
+        AppIconLoader.apply(launcher);
         launcher.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         launcher.setLayout(new BorderLayout(12, 12));
 

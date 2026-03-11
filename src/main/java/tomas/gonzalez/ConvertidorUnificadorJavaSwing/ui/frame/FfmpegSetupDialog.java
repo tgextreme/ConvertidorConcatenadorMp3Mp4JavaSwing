@@ -17,6 +17,7 @@ public class FfmpegSetupDialog extends JDialog {
 
     public FfmpegSetupDialog(Frame owner, ConfigRepository.AppConfig config) {
         super(owner, "Configurar FFmpeg", true);
+        AppIconLoader.apply(this);
         setLayout(new BorderLayout(8, 8));
 
         JPanel main = new JPanel(new GridBagLayout());

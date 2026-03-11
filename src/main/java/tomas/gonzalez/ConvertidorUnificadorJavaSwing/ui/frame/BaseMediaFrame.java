@@ -40,6 +40,7 @@ public abstract class BaseMediaFrame extends JFrame {
     public BaseMediaFrame(String title, ConfigRepository.AppConfig config,
                           QueueManagementUseCase queueUseCase) {
         super(title);
+        AppIconLoader.apply(this);
         this.config = config;
         this.queueUseCase = queueUseCase;
         this.outputPanel = new OutputPanel(config.defaultOutputDir);

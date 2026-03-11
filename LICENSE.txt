@@ -1,0 +1,5 @@
+Distribucion de ConvertidorUnificadorJavaSwing
+
+Autor: Tomas Gonzalez
+Uso permitido segun los terminos del proyecto.
+El software se entrega tal cual, sin garantias.

@@ -38,6 +38,32 @@ desktop.ini
 *.temp
 *~
 
+# Python cache / virtual envs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# Packaging outputs (create_installer.py)
+installer/build/
+installer/portable/
+installer/output/
+installer/jdk-cache/
+installer/app-icon.ico
+installer/app-icon-256.png
+installer/installer_info.txt
+installer/setup_script.iss
+
+# Local command dumps / helper outputs
+cp.txt
+stderr_out.txt
+create_installer.py
+
 # App local config/output (if generated outside source tree)
 config.json
 jobs-history.json

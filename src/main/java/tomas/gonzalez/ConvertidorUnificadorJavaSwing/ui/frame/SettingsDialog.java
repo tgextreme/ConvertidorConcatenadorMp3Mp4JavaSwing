@@ -23,6 +23,7 @@ public class SettingsDialog extends JDialog {
 
     public SettingsDialog(Frame owner, AppConfig config, QueueManagementUseCase queueUseCase) {
         super(owner, "⚙  Ajustes", true);
+        AppIconLoader.apply(this);
         this.config = config;
         this.queueUseCase = queueUseCase;
 
