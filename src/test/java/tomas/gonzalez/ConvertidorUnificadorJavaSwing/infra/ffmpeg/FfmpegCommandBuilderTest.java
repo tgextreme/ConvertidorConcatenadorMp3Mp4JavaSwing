@@ -78,6 +78,14 @@ class FfmpegCommandBuilderTest {
         assertEquals(outputPath.toAbsolutePath().toString(), cmd.get(cmd.size() - 1));
     }
 
+    @Test
+    void buildTranscode_audioOptions_includesVnFlag() throws Exception {
+        List<String> cmd = builder.build(audioJob(Operation.TRANSCODE));
+
+        assertTrue(cmd.contains("-vn"),
+            "Audio transcode must include -vn to strip any video stream from the output");
+    }
+
     // ── TRANSCODE (video) ─────────────────────────────────────────────────────
 
     @Test
@@ -357,6 +365,7 @@ class FfmpegCommandBuilderTest {
         List<String> cmd = builder.buildSilenceDetectCommand(job);
 
         assertEquals(FFMPEG, cmd.get(0));
+        assertContainsSequence(cmd, "-loglevel", "info");
         assertContainsSequence(cmd, "-map", "0:a:0");
         assertContainsSequence(cmd, "-af", "silencedetect=n=-30.0dB:d=0.5");
         assertContainsSequence(cmd, "-f", "null");
@@ -502,5 +511,109 @@ class FfmpegCommandBuilderTest {
             .filter(s -> s.contains("trim=start=") && !s.contains(":end="))
             .count();
         assertTrue(endCount >= 1, "Open-end segment must NOT contain :end= in trim");
+    }
+
+    // ── JOIN (Video Joiner) ───────────────────────────────────────────────────
+
+    private Job joinJob(int numInputs, java.util.List<Integer> audioTracks) {
+        java.util.List<MediaItem> inputs = new java.util.ArrayList<>();
+        for (int i = 0; i < numInputs; i++) {
+            inputs.add(new MediaItem(tempDir.resolve("clip" + i + ".mp4")));
+        }
+        VideoOptions vo = new VideoOptions();
+        vo.setVideoCodec("libx264");
+        vo.setCrf(23);
+        JoinOptions jo = new JoinOptions(vo, audioTracks);
+        return new Job(MediaType.VIDEO, Operation.JOIN, inputs, outputPath, jo);
+    }
+
+    @Test
+    void buildJoin_twoInputs_hasTwoIFlags() throws Exception {
+        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+
+        assertCommandStartsCorrectly(cmd);
+        long iCount = cmd.stream().filter("-i"::equals).count();
+        assertEquals(2, iCount, "JOIN with 2 inputs must have exactly 2 -i flags");
+    }
+
+    @Test
+    void buildJoin_threeInputs_hasConcatFilterN3() throws Exception {
+        List<String> cmd = builder.build(joinJob(3, List.of(0, 0, 0)));
+
+        assertTrue(cmd.contains("-filter_complex"), "JOIN must use -filter_complex");
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        assertTrue(fc.contains("concat=n=3:v=1:a=1"), "Must have concat=n=3:v=1:a=1 in filter");
+    }
+
+    @Test
+    void buildJoin_mapsVoutAndAout() throws Exception {
+        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+
+        assertContainsSequence(cmd, "-map", "[vout]");
+        assertContainsSequence(cmd, "-map", "[aout]");
+    }
+
+    @Test
+    void buildJoin_usesVideoCodecFromOptions() throws Exception {
+        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+
+        assertContainsSequence(cmd, "-c:v", "libx264");
+    }
+
+    @Test
+    void buildJoin_copyCodec_fallsBackToLibx264() throws Exception {
+        java.util.List<MediaItem> inputs = List.of(
+            new MediaItem(tempDir.resolve("a.mp4")),
+            new MediaItem(tempDir.resolve("b.mp4"))
+        );
+        VideoOptions vo = new VideoOptions();
+        vo.setVideoCodec("copy");  // copy not valid for JOIN
+        JoinOptions jo = new JoinOptions(vo, List.of(0, 0));
+        Job job = new Job(MediaType.VIDEO, Operation.JOIN, inputs, outputPath, jo);
+
+        List<String> cmd = builder.build(job);
+
+        assertContainsSequence(cmd, "-c:v", "libx264");
+    }
+
+    @Test
+    void buildJoin_nullAudioTracks_usesDefault0() throws Exception {
+        // Should not throw even when audioTracks is null
+        List<String> cmd = builder.build(joinJob(2, null));
+
+        assertTrue(cmd.contains("-filter_complex"));
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        // Each input selects audio track 0  →  [0:a:0] and [1:a:0]
+        assertTrue(fc.contains("[0:a:0]"), "With null tracks, input 0 must use audio track 0");
+        assertTrue(fc.contains("[1:a:0]"), "With null tracks, input 1 must use audio track 0");
+    }
+
+    @Test
+    void buildJoin_outputIsLastArgument() throws Exception {
+        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+
+        assertEquals(outputPath.toAbsolutePath().toString(), cmd.get(cmd.size() - 1));
+    }
+
+    @Test
+    void buildJoin_defaultScale_uses1280x720() throws Exception {
+        // VideoOptions with 0 width/height → default 1280×720
+        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        assertTrue(fc.contains("scale=1280:720"), "Default scale must be 1280:720");
+    }
+
+    @Test
+    void buildJoin_customAudioTrack_usesCorrectIndex() throws Exception {
+        // Input 1 should use audio track 2 ([1:a:2])
+        List<String> cmd = builder.build(joinJob(2, List.of(0, 2)));
+
+        int fcIdx = cmd.indexOf("-filter_complex");
+        String fc = cmd.get(fcIdx + 1);
+        assertTrue(fc.contains("[1:a:2]"), "Input 1 must select audio track 2");
     }
 }

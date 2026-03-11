@@ -22,6 +22,7 @@ public class ConfigRepository {
         public boolean overwriteByDefault = false;
         public String lastAudioContainer = "mp3";
         public String lastVideoContainer = "mp4";
+        public int maxJobHistory = 100;
         // Silence remover defaults (video)
         public double silenceThresholdDb = -30.0;
         public double silenceMinDurationSec = 0.50;

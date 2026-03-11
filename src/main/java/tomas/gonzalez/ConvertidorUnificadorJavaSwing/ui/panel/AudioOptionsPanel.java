@@ -1,7 +1,10 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel;
 
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.PresetUseCase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.AudioOptions;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.MediaType;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.Operation;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.Preset;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -28,6 +31,12 @@ public class AudioOptionsPanel extends JPanel {
         "Transcodificar", "Extraer Audio", "Concatenar", "Recortar", "Normalizar",
         "Audio+Imagen \u2192 MP4"
     };
+
+    // Preset bar
+    private final JComboBox<Preset> presetCombo = new JComboBox<>();
+    private final JButton loadPresetBtn = new JButton("Cargar");
+    private final JButton savePresetBtn = new JButton("Guardar");
+    private PresetUseCase presetUseCase;
 
     // Resolution presets for Audio → MP4
     private static final String[] VIDEO_RESOLUTIONS = {
@@ -98,6 +107,33 @@ public class AudioOptionsPanel extends JPanel {
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 2; gc.weightx = 1;
         add(imageSection, gc);
         imageSection.setVisible(false);
+        row++;
+
+        // --- Preset bar ---
+        gc.gridwidth = 1;
+        gc.gridx = 0; gc.gridy = row; gc.weightx = 0; add(new JLabel("Preset:"), gc);
+        JPanel presetBarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        presetCombo.setPreferredSize(new Dimension(200, 22));
+        presetBarPanel.add(presetCombo);
+        loadPresetBtn.setToolTipText("Cargar opciones del preset seleccionado");
+        savePresetBtn.setToolTipText("Guardar configuración actual como nuevo preset");
+        presetBarPanel.add(loadPresetBtn);
+        presetBarPanel.add(savePresetBtn);
+        gc.gridx = 1; gc.weightx = 1; add(presetBarPanel, gc);
+
+        presetCombo.addItem(null);  // placeholder
+        presetCombo.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(
+                    javax.swing.JList<?> list, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setText(value == null ? "-- Preset --" : value.toString());
+                return this;
+            }
+        });
+        loadPresetBtn.addActionListener(e -> loadSelectedPreset());
+        savePresetBtn.addActionListener(e -> saveCurrentPreset());
 
         // Sync visibility with operation selection
         operationBox.addActionListener(e -> onOperationChanged());
@@ -231,5 +267,60 @@ public class AudioOptionsPanel extends JPanel {
         if (ext.equals("vorbis")) return "ogg";
         if (ext.equals("aac")) return "m4a";
         return ext;
+    }
+
+    // ---------------------------------------------------------------- Presets
+
+    public void setPresetUseCase(PresetUseCase uc) {
+        this.presetUseCase = uc;
+        presetCombo.removeAllItems();
+        presetCombo.addItem(null);
+        for (Preset p : uc.findByType(MediaType.AUDIO)) {
+            presetCombo.addItem(p);
+        }
+    }
+
+    public void loadAudioOptions(AudioOptions ao) {
+        if (ao == null) return;
+        // Container/codec reverse mapping
+        String codec = ao.getCodec();
+        if (codec != null) {
+            for (Map.Entry<String, String> entry : CONTAINER_CODEC.entrySet()) {
+                if (codec.equals(entry.getValue())) {
+                    containerBox.setSelectedItem(entry.getKey());
+                    break;
+                }
+            }
+        }
+        bitrateSpinner.setValue(ao.getBitrateKbps() > 0 ? ao.getBitrateKbps() : 192);
+        int sr = ao.getSampleRateHz();
+        if (sr > 0) {
+            sampleRateBox.setSelectedItem(String.valueOf(sr));
+        } else {
+            sampleRateBox.setSelectedItem("Auto");
+        }
+        int ch = ao.getChannels();
+        if (ch == 1) channelsBox.setSelectedItem("Mono (1)");
+        else if (ch == 2) channelsBox.setSelectedItem("Estéreo (2)");
+        else channelsBox.setSelectedItem("Auto");
+        normalizeCheck.setSelected(ao.isNormalize());
+    }
+
+    private void loadSelectedPreset() {
+        Preset p = (Preset) presetCombo.getSelectedItem();
+        if (p == null) return;
+        if (p.getOptions() instanceof AudioOptions ao) {
+            loadAudioOptions(ao);
+            if (p.getOperation() != null) setSelectedOperation(p.getOperation());
+        }
+    }
+
+    private void saveCurrentPreset() {
+        if (presetUseCase == null) return;
+        String name = JOptionPane.showInputDialog(this, "Nombre del preset:", "Guardar Preset", JOptionPane.PLAIN_MESSAGE);
+        if (name == null || name.trim().isEmpty()) return;
+        Preset preset = new Preset(name.trim(), MediaType.AUDIO, getSelectedOperation(), buildOptions());
+        presetUseCase.save(preset);
+        setPresetUseCase(presetUseCase);  // refresh combo
     }
 }

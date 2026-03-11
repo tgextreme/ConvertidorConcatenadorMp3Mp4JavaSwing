@@ -3,11 +3,13 @@ package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel;
 import javax.swing.*;
 import javax.swing.text.*;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 
 /**
  * Scrollable text log panel with colored levels.
@@ -17,6 +19,7 @@ public class LogPanel extends JPanel {
     private final JTextPane textPane = new JTextPane();
     private final StyledDocument doc = textPane.getStyledDocument();
     private final Path logFile;
+    private List<String> lastCommand;
 
     public LogPanel(Path logFile) {
         this.logFile = logFile;
@@ -32,11 +35,34 @@ public class LogPanel extends JPanel {
         add(scroll, BorderLayout.CENTER);
 
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+
+        JButton copyBtn = new JButton("Copiar cmd");
+        copyBtn.setFont(copyBtn.getFont().deriveFont(11f));
+        copyBtn.setToolTipText("Copiar el último comando ffmpeg al portapapeles");
+        copyBtn.addActionListener(e -> copyLastCommand());
+        btns.add(copyBtn);
+
         JButton clearBtn = new JButton("Limpiar");
         clearBtn.setFont(clearBtn.getFont().deriveFont(11f));
         clearBtn.addActionListener(e -> clear());
         btns.add(clearBtn);
         add(btns, BorderLayout.SOUTH);
+    }
+
+    public void setLastCommand(List<String> cmd) {
+        this.lastCommand = cmd;
+    }
+
+    private void copyLastCommand() {
+        if (lastCommand == null || lastCommand.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No hay comando disponible todavía.",
+                "Sin comando", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String cmdStr = String.join(" ", lastCommand);
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+            .setContents(new StringSelection(cmdStr), null);
+        info("Comando copiado al portapapeles.");
     }
 
     public void log(String level, String message) {

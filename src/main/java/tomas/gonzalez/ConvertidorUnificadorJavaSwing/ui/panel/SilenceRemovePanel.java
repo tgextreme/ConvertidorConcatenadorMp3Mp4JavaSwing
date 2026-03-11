@@ -187,6 +187,8 @@ public class SilenceRemovePanel extends JPanel {
 
     /** Builds a SilenceRemoveOptions from the current panel state. */
     public SilenceRemoveOptions buildOptions() {
+        commitPendingEdits();
+
         SilenceRemoveOptions opts = new SilenceRemoveOptions();
         opts.setAudioStreamIndices(getSelectedAudioStreamIndices());
         opts.setThresholdDb(((Number) thresholdSpinner.getValue()).doubleValue());
@@ -200,6 +202,14 @@ public class SilenceRemovePanel extends JPanel {
         opts.setAudioBitrateKbps(((Number) aBitrateSpinner.getValue()).intValue());
         opts.setContainer((String) containerCombo.getSelectedItem());
         return opts;
+    }
+
+    private void commitPendingEdits() {
+        try { thresholdSpinner.commitEdit(); } catch (java.text.ParseException ignored) {}
+        try { minDurSpinner.commitEdit(); } catch (java.text.ParseException ignored) {}
+        try { paddingSpinner.commitEdit(); } catch (java.text.ParseException ignored) {}
+        try { crfSpinner.commitEdit(); } catch (java.text.ParseException ignored) {}
+        try { aBitrateSpinner.commitEdit(); } catch (java.text.ParseException ignored) {}
     }
 
     /** Applies persisted defaults to the silence-detection controls. */

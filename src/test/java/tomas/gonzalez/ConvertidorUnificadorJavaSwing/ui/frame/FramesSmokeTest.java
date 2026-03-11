@@ -8,6 +8,8 @@ import java.awt.GraphicsEnvironment;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+
+
 class FramesSmokeTest {
 
     @Test
@@ -72,5 +74,35 @@ class FramesSmokeTest {
 
         assertNotNull(sf);
         sf.dispose();
+    }
+
+    @Test
+    void instantiateBulkAudioFrame_whenNotHeadless() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+
+        ConfigRepository.AppConfig cfg = new ConfigRepository.AppConfig();
+        QueueManagementUseCase queue = new QueueManagementUseCase(cfg);
+
+        BulkAudioFrame bf = new BulkAudioFrame(cfg, queue);
+
+        assertNotNull(bf);
+        bf.dispose();
+    }
+
+    @Test
+    void instantiateBulkVideoFrame_whenNotHeadless() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+
+        ConfigRepository.AppConfig cfg = new ConfigRepository.AppConfig();
+        QueueManagementUseCase queue = new QueueManagementUseCase(cfg);
+
+        BulkVideoFrame bvf = new BulkVideoFrame(cfg, queue);
+
+        assertNotNull(bvf);
+        bvf.dispose();
     }
 }

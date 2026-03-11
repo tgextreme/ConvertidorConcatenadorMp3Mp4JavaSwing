@@ -1,5 +1,7 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public class AudioOptions implements Options {
 
     private String container;  // mp3, aac, m4a, flac, wav, ogg, opus
@@ -28,6 +30,7 @@ public class AudioOptions implements Options {
     }
 
     @Override
+    @JsonIgnore
     public MediaType getMediaType() { return MediaType.AUDIO; }
 
     public String getContainer() { return container; }

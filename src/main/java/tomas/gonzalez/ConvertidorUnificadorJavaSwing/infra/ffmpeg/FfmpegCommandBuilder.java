@@ -37,6 +37,7 @@ public class FfmpegCommandBuilder {
             case AUDIO_TO_VIDEO -> buildAudioToVideo(job);
             case SILENCE_REMOVE -> throw new UnsupportedOperationException(
                 "SILENCE_REMOVE uses buildSilenceDetectCommand / buildSilenceRemoveCommand");
+            case JOIN           -> buildJoin(job);
         };
     }
 
@@ -51,6 +52,7 @@ public class FfmpegCommandBuilder {
         cmd.add("-i"); cmd.add(job.getInputs().get(0).getPath().toAbsolutePath().toString());
 
         if (job.getOptions() instanceof AudioOptions ao) {
+            cmd.add("-vn"); // strip any video stream — safe for audio-only files
             applyAudioOptions(cmd, ao);
         } else if (job.getOptions() instanceof VideoOptions vo) {
             applyVideoOptions(cmd, vo);
@@ -204,6 +206,74 @@ public class FfmpegCommandBuilder {
             cmd.add("-b:a"); cmd.add(vo.getAudioBitrateKbps() + "k");
         }
 
+        cmd.add(job.getOutput().toAbsolutePath().toString());
+        return cmd;
+    }
+
+    // ---------------------------------------------------------------- JOIN (Video Joiner with per-file audio track)
+    private List<String> buildJoin(Job job) {
+        JoinOptions jo = (JoinOptions) job.getOptions();
+        VideoOptions vo = jo.getVideoOptions();
+        List<Integer> audioTracks = jo.getAudioTrackPerInput();
+        int n = job.getInputs().size();
+
+        int w   = vo.getWidth()  > 0 ? vo.getWidth()  : 1280;
+        int h   = vo.getHeight() > 0 ? vo.getHeight() : 720;
+        int fps = vo.getFps()    > 0 ? (int) vo.getFps() : 30;
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(ffmpegPath); cmd.add("-y"); cmd.add("-hide_banner");
+        cmd.add("-loglevel"); cmd.add("error");
+        cmd.add("-progress"); cmd.add("pipe:1");
+        for (MediaItem item : job.getInputs()) {
+            cmd.add("-i"); cmd.add(item.getPath().toAbsolutePath().toString());
+        }
+
+        StringBuilder fc = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            fc.append("[").append(i).append(":v]")
+              .append("scale=").append(w).append(":").append(h)
+              .append(":force_original_aspect_ratio=decrease,")
+              .append("pad=").append(w).append(":").append(h)
+              .append(":(ow-iw)/2:(oh-ih)/2,")
+              .append("fps=").append(fps).append(",")
+              .append("format=yuv420p,setsar=1")
+              .append("[v").append(i).append("];");
+        }
+        for (int i = 0; i < n; i++) {
+            int track = (audioTracks != null && i < audioTracks.size()) ? audioTracks.get(i) : 0;
+            fc.append("[").append(i).append(":a:").append(track).append("]")
+              .append("aresample=async=1[a").append(i).append("];");
+        }
+        for (int i = 0; i < n; i++) {
+            fc.append("[v").append(i).append("][a").append(i).append("]");
+        }
+        fc.append("concat=n=").append(n).append(":v=1:a=1[vout][aout]");
+
+        cmd.add("-filter_complex"); cmd.add(fc.toString());
+        cmd.add("-map"); cmd.add("[vout]");
+        cmd.add("-map"); cmd.add("[aout]");
+
+        String videoCodec = vo.getVideoCodec();
+        if (videoCodec == null || videoCodec.trim().isEmpty() || "copy".equals(videoCodec)) {
+            videoCodec = "libx264";
+        }
+        cmd.add("-c:v"); cmd.add(videoCodec);
+        if (vo.getBitrateMode() == VideoOptions.BitrateMode.CRF) {
+            cmd.add("-crf"); cmd.add(String.valueOf(vo.getCrf()));
+        } else if (vo.getVideoBitrateKbps() > 0) {
+            cmd.add("-b:v"); cmd.add(vo.getVideoBitrateKbps() + "k");
+        }
+        if (vo.getPreset() != null && !vo.getPreset().trim().isEmpty()
+                && (videoCodec.contains("x264") || videoCodec.contains("x265"))) {
+            cmd.add("-preset"); cmd.add(vo.getPreset());
+        }
+        String aCodec = vo.getAudioCodec();
+        if (aCodec == null || "copy".equals(aCodec)) aCodec = "aac";
+        cmd.add("-c:a"); cmd.add(aCodec);
+        if (vo.getAudioBitrateKbps() > 0) {
+            cmd.add("-b:a"); cmd.add(vo.getAudioBitrateKbps() + "k");
+        }
         cmd.add(job.getOutput().toAbsolutePath().toString());
         return cmd;
     }
@@ -457,6 +527,8 @@ public class FfmpegCommandBuilder {
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath);
         cmd.add("-hide_banner");
+        // silencedetect reports silence_start/silence_end on stderr at info level.
+        cmd.add("-loglevel"); cmd.add("info");
         cmd.add("-i"); cmd.add(input);
 
         if (indices.size() == 1) {
@@ -516,22 +588,46 @@ public class FfmpegCommandBuilder {
                 double end   = seg[1];
                 if (start > 0) { cmd.add("-ss"); cmd.add(String.format(Locale.US, "%.4f", start)); }
                 if (end < Double.MAX_VALUE) { cmd.add("-t"); cmd.add(String.format(Locale.US, "%.4f", end - start)); }
-                cmd.add("-map"); cmd.add("0:a:0");
+                for (int idx : audioIndices) {
+                    cmd.add("-map"); cmd.add("0:a:" + idx);
+                }
             } else {
-                // filter_complex: atrim each segment, concat audio-only
+                // filter_complex: atrim each segment for each selected track, then concat.
                 StringBuilder fc = new StringBuilder();
                 for (int i = 0; i < n; i++) {
                     double start = keepSegments.get(i)[0];
                     double end   = keepSegments.get(i)[1];
                     boolean hasEnd = end < Double.MAX_VALUE;
-                    fc.append("[0:a:0]atrim=start=").append(String.format(Locale.US, "%.4f", start));
-                    if (hasEnd) fc.append(":end=").append(String.format(Locale.US, "%.4f", end));
-                    fc.append(",asetpts=PTS-STARTPTS[a").append(i).append("];");
+                    for (int j = 0; j < numAudio; j++) {
+                        int audioIdx = audioIndices.get(j);
+                        fc.append("[0:a:").append(audioIdx).append("]atrim=start=")
+                          .append(String.format(Locale.US, "%.4f", start));
+                        if (hasEnd) fc.append(":end=").append(String.format(Locale.US, "%.4f", end));
+                        fc.append(",asetpts=PTS-STARTPTS[a").append(j).append("_").append(i).append("];" );
+                    }
                 }
-                for (int i = 0; i < n; i++) fc.append("[a").append(i).append("]");
-                fc.append("concat=n=").append(n).append(":v=0:a=1[aout]");
+
+                for (int i = 0; i < n; i++) {
+                    for (int j = 0; j < numAudio; j++) {
+                        fc.append("[a").append(j).append("_").append(i).append("]");
+                    }
+                }
+                fc.append("concat=n=").append(n).append(":v=0:a=").append(numAudio);
+                if (numAudio == 1) {
+                    fc.append("[aout]");
+                } else {
+                    for (int j = 0; j < numAudio; j++) {
+                        fc.append("[aout").append(j).append("]");
+                    }
+                }
                 cmd.add("-filter_complex"); cmd.add(fc.toString());
-                cmd.add("-map"); cmd.add("[aout]");
+                if (numAudio == 1) {
+                    cmd.add("-map"); cmd.add("[aout]");
+                } else {
+                    for (int j = 0; j < numAudio; j++) {
+                        cmd.add("-map"); cmd.add("[aout" + j + "]");
+                    }
+                }
             }
         } else {
             // ---- Video path (with video stream) ----

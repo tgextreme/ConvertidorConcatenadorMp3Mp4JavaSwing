@@ -161,6 +161,9 @@ public abstract class BaseMediaFrame extends JFrame {
                 case RUNNING -> {
                     progressPanel.setStatus("Ejecutando: " + e.job().getDisplayName());
                     logPanel.info("Iniciado: " + e.job().getDisplayName());
+                    if (e.job().getFfmpegCommand() != null) {
+                        logPanel.setLastCommand(e.job().getFfmpegCommand());
+                    }
                 }
                 case PENDING -> {
                     progressPanel.setStatus("En cola: " + e.job().getDisplayName());

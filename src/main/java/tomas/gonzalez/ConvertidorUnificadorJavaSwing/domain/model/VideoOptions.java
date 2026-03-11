@@ -1,5 +1,7 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public class VideoOptions implements Options {
 
     public enum BitrateMode { CRF, BITRATE }
@@ -38,6 +40,7 @@ public class VideoOptions implements Options {
     }
 
     @Override
+    @JsonIgnore
     public MediaType getMediaType() { return MediaType.VIDEO; }
 
     public String getContainer() { return container; }

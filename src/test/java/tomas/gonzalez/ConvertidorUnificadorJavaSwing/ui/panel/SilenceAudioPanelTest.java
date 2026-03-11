@@ -3,9 +3,18 @@ package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel;
 import org.junit.jupiter.api.Test;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.SilenceRemoveOptions;
 
+import javax.swing.JSpinner;
+import java.lang.reflect.Field;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class SilenceAudioPanelTest {
+
+    private JSpinner spinner(SilenceAudioPanel panel, String field) throws Exception {
+        Field f = SilenceAudioPanel.class.getDeclaredField(field);
+        f.setAccessible(true);
+        return (JSpinner) f.get(panel);
+    }
 
     @Test
     void buildOptions_isAudioOnly() {
@@ -66,5 +75,24 @@ class SilenceAudioPanelTest {
     void setDuration_blank_doesNotThrow() {
         SilenceAudioPanel panel = new SilenceAudioPanel();
         assertDoesNotThrow(() -> panel.setDuration(""));
+    }
+
+    @Test
+    void buildOptions_commitsPendingSpinnerEdits() throws Exception {
+        SilenceAudioPanel panel = new SilenceAudioPanel();
+
+        JSpinner threshold = spinner(panel, "thresholdSpinner");
+        JSpinner minDur = spinner(panel, "minDurSpinner");
+        JSpinner padding = spinner(panel, "paddingSpinner");
+
+        ((JSpinner.DefaultEditor) threshold.getEditor()).getTextField().setText("-41");
+        ((JSpinner.DefaultEditor) minDur.getEditor()).getTextField().setText("2");
+        ((JSpinner.DefaultEditor) padding.getEditor()).getTextField().setText("1");
+
+        SilenceRemoveOptions opts = panel.buildOptions();
+
+        assertEquals(-41.0, opts.getThresholdDb(), 0.001);
+        assertEquals(2.0, opts.getMinSilenceDuration(), 0.001);
+        assertEquals(1.0, opts.getPadding(), 0.001);
     }
 }

@@ -1,7 +1,10 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel;
 
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.PresetUseCase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.AudioStreamInfo;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.MediaType;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.Operation;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.Preset;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.SilenceRemoveOptions;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions.BitrateMode;
@@ -9,6 +12,7 @@ import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.VideoOptions.O
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -44,6 +48,12 @@ public class VideoOptionsPanel extends JPanel {
     private final JTextField trimEndField = new JTextField("", 8);
 
     private final SilenceRemovePanel silencePanel = new SilenceRemovePanel();
+
+    // Preset bar
+    private final JComboBox<Preset> presetCombo = new JComboBox<>();
+    private final JButton loadPresetBtn = new JButton("Cargar");
+    private final JButton savePresetBtn = new JButton("Guardar");
+    private PresetUseCase presetUseCase;
 
     public VideoOptionsPanel() {
         setLayout(new GridBagLayout());
@@ -87,8 +97,34 @@ public class VideoOptionsPanel extends JPanel {
         // Silence Remove panel — span both columns, hidden unless operation == SILENCE_REMOVE
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 2; gc.weightx = 1;
         add(silencePanel, gc);
-        gc.gridwidth = 1;
         silencePanel.setVisible(false);
+        row++;
+        gc.gridwidth = 1;
+
+        // --- Preset bar ---
+        gc.gridx = 0; gc.gridy = row; gc.weightx = 0; add(new JLabel("Preset:"), gc);
+        JPanel presetBarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        presetCombo.setPreferredSize(new Dimension(200, 22));
+        presetBarPanel.add(presetCombo);
+        loadPresetBtn.setToolTipText("Cargar opciones del preset seleccionado");
+        savePresetBtn.setToolTipText("Guardar configuración actual como nuevo preset");
+        presetBarPanel.add(loadPresetBtn);
+        presetBarPanel.add(savePresetBtn);
+        gc.gridx = 1; gc.weightx = 1; add(presetBarPanel, gc);
+
+        presetCombo.addItem(null);
+        presetCombo.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(
+                    javax.swing.JList<?> list, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setText(value == null ? "-- Preset --" : value.toString());
+                return this;
+            }
+        });
+        loadPresetBtn.addActionListener(e -> loadSelectedPreset());
+        savePresetBtn.addActionListener(e -> saveCurrentPreset());
 
         presetBox.setSelectedItem("medium");
 
@@ -170,5 +206,83 @@ public class VideoOptionsPanel extends JPanel {
 
     public SilenceRemoveOptions buildSilenceRemoveOptions() {
         return silencePanel.buildOptions();
+    }
+
+    // ---------------------------------------------------------------- Presets
+
+    public void setPresetUseCase(PresetUseCase uc) {
+        this.presetUseCase = uc;
+        presetCombo.removeAllItems();
+        presetCombo.addItem(null);
+        for (Preset p : uc.findByType(MediaType.VIDEO)) {
+            presetCombo.addItem(p);
+        }
+    }
+
+    public void loadVideoOptions(VideoOptions vo) {
+        if (vo == null) return;
+        if (vo.getContainer() != null) {
+            for (int i = 0; i < containerBox.getItemCount(); i++) {
+                if (vo.getContainer().equals(containerBox.getItemAt(i))) {
+                    containerBox.setSelectedIndex(i); break;
+                }
+            }
+        }
+        if (vo.getVideoCodec() != null) {
+            for (int i = 0; i < vCodecBox.getItemCount(); i++) {
+                if (vo.getVideoCodec().equals(vCodecBox.getItemAt(i))) {
+                    vCodecBox.setSelectedIndex(i); break;
+                }
+            }
+        }
+        if (vo.getBitrateMode() == BitrateMode.BITRATE) {
+            bitrateRadio.setSelected(true);
+            crfSpinner.setEnabled(false);
+            videoBitrateSpinner.setEnabled(true);
+            videoBitrateSpinner.setValue(vo.getVideoBitrateKbps() > 0 ? vo.getVideoBitrateKbps() : 3000);
+        } else {
+            crfRadio.setSelected(true);
+            crfSpinner.setEnabled(true);
+            videoBitrateSpinner.setEnabled(false);
+            crfSpinner.setValue(vo.getCrf() > 0 ? vo.getCrf() : 23);
+        }
+        if (vo.getPreset() != null) {
+            boolean found = false;
+            for (int i = 0; i < presetBox.getItemCount(); i++) {
+                if (vo.getPreset().equals(presetBox.getItemAt(i))) {
+                    presetBox.setSelectedIndex(i); found = true; break;
+                }
+            }
+            if (!found) presetBox.setSelectedItem("medium");
+        }
+        if (vo.getWidth() > 0) widthSpinner.setValue(vo.getWidth());
+        if (vo.getHeight() > 0) heightSpinner.setValue(vo.getHeight());
+        if (vo.getFps() > 0) fpsSpinner.setValue(vo.getFps());
+        if (vo.getAudioCodec() != null) {
+            for (int i = 0; i < aCodecBox.getItemCount(); i++) {
+                if (vo.getAudioCodec().equals(aCodecBox.getItemAt(i))) {
+                    aCodecBox.setSelectedIndex(i); break;
+                }
+            }
+        }
+        if (vo.getAudioBitrateKbps() > 0) audioBitrateSpinner.setValue(vo.getAudioBitrateKbps());
+    }
+
+    private void loadSelectedPreset() {
+        Preset p = (Preset) presetCombo.getSelectedItem();
+        if (p == null) return;
+        if (p.getOptions() instanceof VideoOptions vo) {
+            loadVideoOptions(vo);
+            if (p.getOperation() != null) setSelectedOperation(p.getOperation());
+        }
+    }
+
+    private void saveCurrentPreset() {
+        if (presetUseCase == null) return;
+        String name = JOptionPane.showInputDialog(this, "Nombre del preset:", "Guardar Preset", JOptionPane.PLAIN_MESSAGE);
+        if (name == null || name.trim().isEmpty()) return;
+        Preset preset = new Preset(name.trim(), MediaType.VIDEO, getSelectedOperation(), buildOptions());
+        presetUseCase.save(preset);
+        setPresetUseCase(presetUseCase);  // refresh combo
     }
 }

@@ -9,7 +9,8 @@ public enum Operation {
     TRIM("Recortar"),
     NORMALIZE("Normalizar Audio"),
     AUDIO_TO_VIDEO("Audio+Imagen → MP4"),
-    SILENCE_REMOVE("Recortar Silencios");
+    SILENCE_REMOVE("Recortar Silencios"),
+    JOIN("Unir Vídeos");
 
     private final String displayName;
 

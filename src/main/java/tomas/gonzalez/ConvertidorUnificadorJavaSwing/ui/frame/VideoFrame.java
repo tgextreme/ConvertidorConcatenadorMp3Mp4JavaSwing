@@ -1,5 +1,6 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame;
 
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.PresetUseCase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.QueueManagementUseCase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.*;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.ConfigRepository;
@@ -25,10 +26,22 @@ public class VideoFrame extends BaseMediaFrame {
     ));
 
     private VideoOptionsPanel optionsPanel;
+    private PresetUseCase presetUseCase;
 
     public VideoFrame(ConfigRepository.AppConfig config, QueueManagementUseCase queueUseCase) {
         super("🎬  Convertidor / Unificador de Vídeo", config, queueUseCase);
         setIconTitle();
+    }
+
+    public VideoFrame(ConfigRepository.AppConfig config, QueueManagementUseCase queueUseCase,
+                      PresetUseCase presetUseCase) {
+        this(config, queueUseCase);
+        this.presetUseCase = presetUseCase;
+        // optionsPanel was already created inside super() via createOptionsPanel(),
+        // so we need to wire the presetUseCase here explicitly.
+        if (presetUseCase != null && optionsPanel != null) {
+            optionsPanel.setPresetUseCase(presetUseCase);
+        }
     }
 
     private void setIconTitle() {
@@ -135,6 +148,7 @@ public class VideoFrame extends BaseMediaFrame {
     private void ensureOptionsPanel() {
         if (optionsPanel == null) {
             optionsPanel = new VideoOptionsPanel();
+            if (presetUseCase != null) optionsPanel.setPresetUseCase(presetUseCase);
         }
     }
 }

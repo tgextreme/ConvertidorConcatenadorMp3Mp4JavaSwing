@@ -3,6 +3,8 @@ package tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.event.*;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.*;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.ConfigRepository;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.JobHistoryRepository;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.JobHistoryEntry;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg.*;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg.FfmpegRunner.Listener;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg.ProgressInfo;
@@ -16,6 +18,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.*;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -35,6 +38,7 @@ public class QueueManagementUseCase {
     });
 
     private ConfigRepository.AppConfig config;
+    private JobHistoryRepository jobHistoryRepository;
 
     public QueueManagementUseCase(ConfigRepository.AppConfig config) {
         this.config = config;
@@ -58,6 +62,7 @@ public class QueueManagementUseCase {
     }
 
     private void runJob(Job job) {
+        long startMs = System.currentTimeMillis();
         String ffmpegPath = config.ffmpegPath;
         if (ffmpegPath == null || ffmpegPath.trim().isEmpty()) {
             job.setStatus(JobStatus.FAILED);
@@ -70,20 +75,24 @@ public class QueueManagementUseCase {
         try {
             FfmpegCommandBuilder builder = new FfmpegCommandBuilder(ffmpegPath);
 
-            job.setStatus(JobStatus.RUNNING);
-            EventBus.get().publish(new JobStatusChangedEvent(job.getId(), JobStatus.RUNNING, job));
-
             long totalDurationMs = job.getInputs().stream()
                 .mapToLong(MediaItem::getDurationMs).sum();
 
             boolean ok;
             if (job.getOperation() == Operation.SILENCE_REMOVE) {
+                job.setStatus(JobStatus.RUNNING);
+                EventBus.get().publish(new JobStatusChangedEvent(job.getId(), JobStatus.RUNNING, job));
                 ok = runSilenceRemoveJob(job, builder, totalDurationMs);
             } else if (isVerticalConcatVideo(job)) {
+                job.setStatus(JobStatus.RUNNING);
+                EventBus.get().publish(new JobStatusChangedEvent(job.getId(), JobStatus.RUNNING, job));
                 ok = runVerticalConcatWithIntermediate(job, builder, totalDurationMs);
             } else {
+                // Build command before publishing RUNNING so UI can display it
                 List<String> cmd = builder.build(job);
                 job.setFfmpegCommand(cmd);
+                job.setStatus(JobStatus.RUNNING);
+                EventBus.get().publish(new JobStatusChangedEvent(job.getId(), JobStatus.RUNNING, job));
                 ok = executeCommand(job, cmd, totalDurationMs, 0, 100);
             }
 
@@ -95,11 +104,13 @@ public class QueueManagementUseCase {
                 job.setStatus(JobStatus.FAILED);
                 EventBus.get().publish(new JobStatusChangedEvent(job.getId(), JobStatus.FAILED, job));
             }
+            recordHistory(job, startMs);
 
         } catch (Exception e) {
             job.setStatus(JobStatus.FAILED);
             job.setErrorMessage(e.getMessage());
             EventBus.get().publish(new JobStatusChangedEvent(job.getId(), JobStatus.FAILED, job));
+            recordHistory(job, startMs);
         }
 
         synchronized (this) { processNext(); }
@@ -125,6 +136,8 @@ public class QueueManagementUseCase {
 
     public void setConfig(ConfigRepository.AppConfig config) { this.config = config; }
 
+    public void setJobHistoryRepository(JobHistoryRepository repo) { this.jobHistoryRepository = repo; }
+
     // ---------------------------------------------------------------- SILENCE REMOVE
 
     /**
@@ -136,6 +149,16 @@ public class QueueManagementUseCase {
             throws Exception {
 
         SilenceRemoveOptions opts = (SilenceRemoveOptions) job.getOptions();
+        List<Integer> selectedTracks = opts.getAudioStreamIndices();
+        if (selectedTracks == null || selectedTracks.isEmpty()) {
+            selectedTracks = java.util.List.of(0);
+        }
+
+        EventBus.get().publish(new JobLogEvent(job.getId(), "INFO",
+            String.format(java.util.Locale.US,
+                "Parámetros silencio -> pistas=%s, umbral=%.2f dB, min=%.2f s, relleno=%.2f s, rápido=%s",
+                selectedTracks, opts.getThresholdDb(), opts.getMinSilenceDuration(),
+                opts.getPadding(), opts.isFastCopy() ? "sí" : "no")));
 
         // ---- Pass 1: detect silence ----
         EventBus.get().publish(new JobLogEvent(job.getId(), "INFO",
@@ -188,13 +211,25 @@ public class QueueManagementUseCase {
         if (silentSegments.isEmpty()) {
             EventBus.get().publish(new JobLogEvent(job.getId(), "INFO",
                 "Sin silencio detectado — copiando sin cambios."));
-            // No silence found: just copy the file
+            // No silence found: keep only the selected streams.
             List<String> copyCmd = new ArrayList<>();
             copyCmd.add(config.ffmpegPath);
             copyCmd.add("-y"); copyCmd.add("-hide_banner");
             copyCmd.add("-loglevel"); copyCmd.add("error");
             copyCmd.add("-progress"); copyCmd.add("pipe:1");
             copyCmd.add("-i"); copyCmd.add(job.getInputs().get(0).getPath().toAbsolutePath().toString());
+
+            List<Integer> audioIndices = opts.getAudioStreamIndices();
+            if (audioIndices == null || audioIndices.isEmpty()) {
+                audioIndices = java.util.List.of(0);
+            }
+            if (!opts.isAudioOnly()) {
+                copyCmd.add("-map"); copyCmd.add("0:v:0");
+            }
+            for (int idx : audioIndices) {
+                copyCmd.add("-map"); copyCmd.add("0:a:" + idx);
+            }
+
             copyCmd.add("-c"); copyCmd.add("copy");
             copyCmd.add(job.getOutput().toAbsolutePath().toString());
             job.setFfmpegCommand(copyCmd);
@@ -226,7 +261,15 @@ public class QueueManagementUseCase {
 
         long outputDurationMs = (long)(keptSec * 1000);
         if (opts.isFastCopy()) {
-            return runSilenceRemoveFastCopy(job, builder, keepSegments, keptSec, totalDurationSec, opts);
+            boolean ok = runSilenceRemoveFastCopy(job, builder, keepSegments, keptSec, totalDurationSec, opts);
+            if (!ok && !runner.isCanceled() && !opts.isAudioOnly()) {
+                EventBus.get().publish(new JobLogEvent(job.getId(), "WARN",
+                    "Modo rápido falló en vídeo. Reintentando en modo preciso (recodificación)..."));
+                List<String> cutCmd = builder.buildSilenceRemoveCommand(job, keepSegments);
+                job.setFfmpegCommand(cutCmd);
+                return executeCommand(job, cutCmd, outputDurationMs, 0, 100);
+            }
+            return ok;
         } else {
             List<String> cutCmd = builder.buildSilenceRemoveCommand(job, keepSegments);
             job.setFfmpegCommand(cutCmd);
@@ -237,9 +280,8 @@ public class QueueManagementUseCase {
     /**
      * Fast mode for silence removal.
      *
-     * For AUDIO jobs, keeps true stream-copy behavior with concat demuxer inpoint/outpoint.
-     * For VIDEO jobs, cuts each segment with re-encoding and then concatenates the segments.
-     * This avoids repeated seconds at joins caused by keyframe-aligned packet copying.
+     * Uses concat demuxer with inpoint/outpoint and stream-copy for both AUDIO and VIDEO.
+     * This matches the clip-generation approach and avoids per-segment re-encode failures.
      */
     private boolean runSilenceRemoveFastCopy(Job job, FfmpegCommandBuilder builder,
             List<double[]> keepSegments, double totalOutputSec, double inputDurationSec,
@@ -256,93 +298,14 @@ public class QueueManagementUseCase {
             if (audioIndices == null || audioIndices.isEmpty()) audioIndices = java.util.List.of(0);
             long totalMs = Math.max(1, (long)(totalOutputSec * 1000));
 
-            if (opts.isAudioOnly()) {
-                // Audio-only can stay as pure stream-copy with inpoint/outpoint.
-                StringBuilder sb = new StringBuilder();
-                for (double[] seg : keepSegments) {
-                    double start = seg[0];
-                    double end   = seg[1] < Double.MAX_VALUE ? seg[1] : inputDurationSec;
-                    if (end - start <= 0) continue;
-                    sb.append("file '").append(inputPath).append("'\n");
-                    sb.append(String.format(java.util.Locale.US, "inpoint %.4f%n", start));
-                    sb.append(String.format(java.util.Locale.US, "outpoint %.4f%n", end));
-                }
-                Files.writeString(listFile, sb.toString());
-
-                List<String> concatCmd = new ArrayList<>();
-                concatCmd.add(config.ffmpegPath);
-                concatCmd.add("-y"); concatCmd.add("-hide_banner");
-                concatCmd.add("-loglevel"); concatCmd.add("error");
-                concatCmd.add("-progress"); concatCmd.add("pipe:1");
-                concatCmd.add("-f"); concatCmd.add("concat");
-                concatCmd.add("-safe"); concatCmd.add("0");
-                concatCmd.add("-i"); concatCmd.add(listFile.toAbsolutePath().toString());
-                for (int idx : audioIndices) {
-                    concatCmd.add("-map"); concatCmd.add("0:a:" + idx);
-                }
-                concatCmd.add("-c"); concatCmd.add("copy");
-                concatCmd.add(job.getOutput().toAbsolutePath().toString());
-                job.setFfmpegCommand(concatCmd);
-
-                return executeCommand(job, concatCmd, totalMs, 0, 100);
-            }
-
-            // Video path: per-segment precise cuts via re-encode to avoid repeated seconds.
-            List<Path> segFiles = new ArrayList<>();
-            long accMs = 0;
-            int segCounter = 0;
+            StringBuilder sb = new StringBuilder();
             for (double[] seg : keepSegments) {
                 double start = seg[0];
                 double end   = seg[1] < Double.MAX_VALUE ? seg[1] : inputDurationSec;
                 if (end - start <= 0) continue;
-
-                Path segFile = tempDir.resolve("seg_" + segCounter++ + "." + opts.getContainer());
-                segFiles.add(segFile);
-
-                long segMs = Math.max(1, (long)((end - start) * 1000));
-                int pBase  = (int) Math.round(accMs * 90.0 / totalMs);
-                int pEnd   = (int) Math.round((accMs + segMs) * 90.0 / totalMs);
-                int pRange = Math.max(1, pEnd - pBase);
-
-                List<String> segCmd = new ArrayList<>();
-                segCmd.add(config.ffmpegPath);
-                segCmd.add("-y"); segCmd.add("-hide_banner");
-                segCmd.add("-loglevel"); segCmd.add("error");
-                segCmd.add("-progress"); segCmd.add("pipe:1");
-                segCmd.add("-ss"); segCmd.add(String.format(java.util.Locale.US, "%.4f", start));
-                segCmd.add("-to"); segCmd.add(String.format(java.util.Locale.US, "%.4f", end));
-                segCmd.add("-i"); segCmd.add(input);
-                segCmd.add("-map"); segCmd.add("0:v:0");
-                for (int idx : audioIndices) {
-                    segCmd.add("-map"); segCmd.add("0:a:" + idx);
-                }
-
-                String vCodec = opts.getVideoCodec() != null ? opts.getVideoCodec() : "libx264";
-                segCmd.add("-c:v"); segCmd.add(vCodec);
-                segCmd.add("-crf"); segCmd.add(String.valueOf(opts.getCrf()));
-                String preset = opts.getVideoPreset();
-                if (preset != null && !preset.isEmpty() && (vCodec.contains("x264") || vCodec.contains("x265"))) {
-                    segCmd.add("-preset"); segCmd.add(preset);
-                }
-                String aCodec = opts.getAudioCodec() != null ? opts.getAudioCodec() : "aac";
-                segCmd.add("-c:a"); segCmd.add(aCodec);
-                if (opts.getAudioBitrateKbps() > 0) {
-                    segCmd.add("-b:a"); segCmd.add(opts.getAudioBitrateKbps() + "k");
-                }
-                segCmd.add(segFile.toAbsolutePath().toString());
-
-                EventBus.get().publish(new JobLogEvent(job.getId(), "INFO",
-                    "Segmento " + segCounter + "/" + keepSegments.size() + " ..."));
-                job.setFfmpegCommand(segCmd);
-                boolean ok = executeCommand(job, segCmd, segMs, pBase, pRange);
-                if (!ok || runner.isCanceled()) return false;
-
-                accMs += segMs;
-            }
-
-            StringBuilder sb = new StringBuilder();
-            for (Path seg : segFiles) {
-                sb.append("file '").append(seg.toAbsolutePath().toString().replace("\\", "/")).append("'\n");
+                sb.append("file '").append(inputPath).append("'\n");
+                sb.append(String.format(java.util.Locale.US, "inpoint %.4f%n", start));
+                sb.append(String.format(java.util.Locale.US, "outpoint %.4f%n", end));
             }
             Files.writeString(listFile, sb.toString());
 
@@ -354,15 +317,18 @@ public class QueueManagementUseCase {
             concatCmd.add("-f"); concatCmd.add("concat");
             concatCmd.add("-safe"); concatCmd.add("0");
             concatCmd.add("-i"); concatCmd.add(listFile.toAbsolutePath().toString());
-            concatCmd.add("-map"); concatCmd.add("0:v:0");
-            for (int i = 0; i < audioIndices.size(); i++) {
-                concatCmd.add("-map"); concatCmd.add("0:a:" + i);
+            if (!opts.isAudioOnly()) {
+                concatCmd.add("-map"); concatCmd.add("0:v:0");
+            }
+            for (int idx : audioIndices) {
+                concatCmd.add("-map"); concatCmd.add("0:a:" + idx);
             }
             concatCmd.add("-c"); concatCmd.add("copy");
+            concatCmd.add("-avoid_negative_ts"); concatCmd.add("1");
             concatCmd.add(job.getOutput().toAbsolutePath().toString());
             job.setFfmpegCommand(concatCmd);
 
-            return executeCommand(job, concatCmd, totalMs, 90, 10);
+            return executeCommand(job, concatCmd, totalMs, 0, 100);
 
         } finally {
             deleteIfExists(listFile, job);
@@ -452,6 +418,19 @@ public class QueueManagementUseCase {
         }
 
         return exitCodeRef.get() == 0;
+    }
+
+    private void recordHistory(Job job, long startMs) {
+        if (jobHistoryRepository == null) return;
+        if (job.getStatus() != JobStatus.SUCCESS && job.getStatus() != JobStatus.FAILED) return;
+        String inputFile = job.getInputs().isEmpty() ? null
+            : job.getInputs().get(0).getPath().toString();
+        String outputFile = job.getOutput() != null ? job.getOutput().toString() : null;
+        long durationMs = System.currentTimeMillis() - startMs;
+        jobHistoryRepository.append(new JobHistoryEntry(
+            job.getId(), inputFile, outputFile,
+            job.getOperation(), job.getStatus(),
+            job.getErrorMessage(), Instant.now(), durationMs));
     }
 
     private Path buildIntermediatePath(Path finalOutput) {
