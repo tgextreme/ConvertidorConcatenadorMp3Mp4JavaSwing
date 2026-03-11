@@ -15,7 +15,7 @@ import java.util.List;
  */
 public class VideoJoinPanel extends JPanel {
 
-    private static final String[] COLUMNS = {"Archivo", "Duración", "Info", "Pista de Audio"};
+    private static final String[] COLUMNS = {"Archivo", "Duración", "Detalles", "Pista de audio usada"};
 
     private final List<MediaItem> rows = new ArrayList<>();
     private final JoinTableModel tableModel = new JoinTableModel();
@@ -23,7 +23,7 @@ public class VideoJoinPanel extends JPanel {
 
     public VideoJoinPanel() {
         setLayout(new BorderLayout(4, 4));
-        setBorder(BorderFactory.createTitledBorder("Archivos a unir"));
+        setBorder(BorderFactory.createTitledBorder("Vídeos a unir"));
 
         table.setRowHeight(24);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -43,10 +43,15 @@ public class VideoJoinPanel extends JPanel {
         add(scroll, BorderLayout.CENTER);
 
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        JButton addBtn    = new JButton("+ Añadir");
-        JButton removeBtn = new JButton("− Quitar");
-        JButton upBtn     = new JButton("↑ Arriba");
-        JButton downBtn   = new JButton("↓ Abajo");
+        JButton addBtn    = new JButton("+ Añadir vídeos");
+        JButton removeBtn = new JButton("− Quitar seleccionado");
+        JButton upBtn     = new JButton("↑ Subir");
+        JButton downBtn   = new JButton("↓ Bajar");
+
+        addBtn.setToolTipText("Añade uno o varios vídeos a la lista de unión");
+        removeBtn.setToolTipText("Quita el vídeo seleccionado de la lista");
+        upBtn.setToolTipText("Mueve el vídeo seleccionado una posición arriba");
+        downBtn.setToolTipText("Mueve el vídeo seleccionado una posición abajo");
 
         addBtn.addActionListener(e -> chooseAndAddFiles());
         removeBtn.addActionListener(e -> removeSelected());
@@ -85,7 +90,7 @@ public class VideoJoinPanel extends JPanel {
     private void chooseAndAddFiles() {
         JFileChooser fc = new JFileChooser();
         fc.setMultiSelectionEnabled(true);
-        fc.setDialogTitle("Añadir vídeos a la lista");
+        fc.setDialogTitle("Seleccionar vídeos para unir");
         if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             for (var f : fc.getSelectedFiles()) {
                 addMediaItem(new MediaItem(f.toPath()));

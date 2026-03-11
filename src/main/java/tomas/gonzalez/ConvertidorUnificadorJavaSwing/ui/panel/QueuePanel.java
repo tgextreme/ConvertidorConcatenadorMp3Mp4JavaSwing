@@ -40,8 +40,9 @@ public class QueuePanel extends JPanel {
         add(scroll, BorderLayout.CENTER);
 
         // "Copy command" button
-        JButton copyCmd = new JButton("Copiar comando");
+        JButton copyCmd = new JButton("Copiar comando FFmpeg");
         copyCmd.setFont(copyCmd.getFont().deriveFont(11f));
+        copyCmd.setToolTipText("Copia el comando FFmpeg del trabajo seleccionado");
         copyCmd.addActionListener(e -> {
             int row = table.getSelectedRow();
             if (row >= 0 && row < model.jobs.size()) {

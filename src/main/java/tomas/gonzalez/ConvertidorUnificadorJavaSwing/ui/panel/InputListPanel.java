@@ -49,10 +49,15 @@ public class InputListPanel extends JPanel {
 
         // Buttons
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        JButton upBtn = new JButton("↑");
-        JButton downBtn = new JButton("↓");
+        JButton upBtn = new JButton("↑ Subir");
+        JButton downBtn = new JButton("↓ Bajar");
         JButton removeBtn = new JButton("✕ Quitar");
-        JButton clearBtn = new JButton("Limpiar todo");
+        JButton clearBtn = new JButton("Vaciar lista");
+
+        upBtn.setToolTipText("Mueve el archivo seleccionado una posición arriba");
+        downBtn.setToolTipText("Mueve el archivo seleccionado una posición abajo");
+        removeBtn.setToolTipText("Elimina el archivo seleccionado de la lista");
+        clearBtn.setToolTipText("Elimina todos los archivos de entrada");
 
         styleButton(upBtn, new Color(80, 100, 180));
         styleButton(downBtn, new Color(80, 100, 180));

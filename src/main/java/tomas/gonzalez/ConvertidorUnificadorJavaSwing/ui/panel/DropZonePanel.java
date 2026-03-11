@@ -26,8 +26,8 @@ public class DropZonePanel extends JPanel implements DropTargetListener {
         setPreferredSize(new Dimension(400, 100));
         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        label = new JLabel("<html><center><b>Suelta archivos aquí</b><br>" +
-            "<small>o haz clic para seleccionar (también carpetas)</small></center></html>",
+        label = new JLabel("<html><center><b>Arrastra y suelta archivos aquí</b><br>" +
+            "<small>o haz clic para seleccionarlos (también acepta carpetas)</small></center></html>",
                 SwingConstants.CENTER);
         label.setForeground(new Color(80, 100, 180));
         label.setFont(label.getFont().deriveFont(13f));
@@ -46,6 +46,7 @@ public class DropZonePanel extends JPanel implements DropTargetListener {
         JFileChooser fc = new JFileChooser();
         fc.setMultiSelectionEnabled(true);
         fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+        fc.setDialogTitle("Seleccionar archivos o carpetas de entrada");
         if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             List<File> files = Arrays.asList(fc.getSelectedFiles());
             if (onFilesDropped != null && !files.isEmpty()) {

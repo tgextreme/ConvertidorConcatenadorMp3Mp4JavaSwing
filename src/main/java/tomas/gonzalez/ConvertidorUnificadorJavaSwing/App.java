@@ -133,50 +133,50 @@ public class App {
 
         audioBtn.addActionListener(e -> {
             AudioFrame af = new AudioFrame(config, sharedQueue, presetUseCase);
-            af.setVisible(true);
+            showOnLauncherScreen(launcher, af);
             checkFfmpeg(af, config, sharedQueue);
         });
 
         videoBtn.addActionListener(e -> {
             VideoFrame vf = new VideoFrame(config, sharedQueue, presetUseCase);
-            vf.setVisible(true);
+            showOnLauncherScreen(launcher, vf);
             checkFfmpeg(vf, config, sharedQueue);
         });
 
         trimBtn.addActionListener(e -> {
             TrimVideoFrame tf = new TrimVideoFrame(config, sharedQueue);
-            tf.setVisible(true);
+            showOnLauncherScreen(launcher, tf);
             checkFfmpeg(tf, config, sharedQueue);
         });
 
         silenceVidBtn.addActionListener(e -> {
             SilenceVideoFrame svf = new SilenceVideoFrame(config, sharedQueue);
-            svf.setVisible(true);
+            showOnLauncherScreen(launcher, svf);
             checkFfmpeg(svf, config, sharedQueue);
         });
 
         silenceAudBtn.addActionListener(e -> {
             SilenceAudioFrame sf = new SilenceAudioFrame(config, sharedQueue);
-            sf.setVisible(true);
+            showOnLauncherScreen(launcher, sf);
             checkFfmpeg(sf, config, sharedQueue);
         });
 
         bulkAudioBtn.addActionListener(e -> {
             BulkAudioFrame baf = new BulkAudioFrame(config, sharedQueue);
-            baf.setVisible(true);
+            showOnLauncherScreen(launcher, baf);
             checkFfmpeg(baf, config, sharedQueue);
         });
 
         bulkVideoBtn.addActionListener(e -> {
             BulkVideoFrame bvf = new BulkVideoFrame(config, sharedQueue);
-            bvf.setVisible(true);
+            showOnLauncherScreen(launcher, bvf);
             checkFfmpeg(bvf, config, sharedQueue);
         });
 
         joinVideoBtn.addActionListener(e -> {
             VideoJoinUseCase joinUseCase = new VideoJoinUseCase(sharedQueue);
             VideoJoinFrame vjf = new VideoJoinFrame(config, joinUseCase);
-            vjf.setVisible(true);
+            showOnLauncherScreen(launcher, vjf);
         });
 
         settingsBtn.addActionListener(e -> {
@@ -222,6 +222,11 @@ public class App {
                 }
             });
         }
+    }
+
+    private static void showOnLauncherScreen(JFrame launcher, JFrame child) {
+        child.setLocationRelativeTo(launcher);
+        child.setVisible(true);
     }
 
     private static void styleMainBtn(JButton btn, Color fg) {

@@ -9,7 +9,7 @@ import java.awt.*;
 public class ProgressPanel extends JPanel {
 
     private final JProgressBar progressBar = new JProgressBar(0, 100);
-    private final JLabel statusLabel = new JLabel("Listo");
+    private final JLabel statusLabel = new JLabel("Sin trabajos en ejecución");
     private final JLabel speedLabel = new JLabel("");
 
     public ProgressPanel() {
@@ -50,7 +50,7 @@ public class ProgressPanel extends JPanel {
     public void reset() {
         progressBar.setValue(0);
         progressBar.setString("0%");
-        statusLabel.setText("Listo");
+        statusLabel.setText("Sin trabajos en ejecución");
         speedLabel.setText("");
     }
 
