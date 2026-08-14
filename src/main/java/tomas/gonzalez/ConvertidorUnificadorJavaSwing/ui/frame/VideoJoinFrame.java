@@ -1,14 +1,16 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame;
 
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.event.*;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.InspectMediaUseCase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.VideoJoinUseCase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.MediaItem;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.ConfigRepository;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg.FfmpegLocator;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.ffmpeg.FfprobeService;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel.*;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.datatransfer.StringSelection;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -21,6 +23,7 @@ public class VideoJoinFrame extends JFrame {
 
     private final ConfigRepository.AppConfig config;
     private final VideoJoinUseCase joinUseCase;
+    private InspectMediaUseCase inspectUseCase;
 
     private final VideoJoinPanel  joinPanel   = new VideoJoinPanel();
     private final VideoOptionsPanel optionsPanel = new VideoOptionsPanel();
@@ -30,10 +33,14 @@ public class VideoJoinFrame extends JFrame {
 
     public VideoJoinFrame(ConfigRepository.AppConfig config, VideoJoinUseCase joinUseCase) {
         super("🎬  Unir Vídeos");
+        AppIconLoader.apply(this);
         this.config    = config;
         this.joinUseCase = joinUseCase;
         this.outputPanel = new OutputPanel(config.defaultOutputDir);
         this.logPanel    = new LogPanel(ConfigRepository.getLogFile());
+
+        initInspectUseCase();
+        joinPanel.setOnItemAdded(this::inspectAddedItem);
 
         buildLayout();
         subscribeToEventBus();
@@ -42,6 +49,27 @@ public class VideoJoinFrame extends JFrame {
         setSize(1100, 820);
         setMinimumSize(new Dimension(900, 620));
         setLocationRelativeTo(null);
+    }
+
+    private void initInspectUseCase() {
+        String ffprobePath = config.ffprobePath;
+        if (ffprobePath == null || ffprobePath.trim().isEmpty()) {
+            ffprobePath = FfmpegLocator.detectFfprobe().orElse(null);
+            if (ffprobePath != null) config.ffprobePath = ffprobePath;
+        }
+        if (ffprobePath != null) {
+            inspectUseCase = new InspectMediaUseCase(new FfprobeService(ffprobePath));
+        }
+    }
+
+    private void inspectAddedItem(MediaItem item) {
+        if (inspectUseCase == null) {
+            logPanel.warn("ffprobe no configurado: no se pueden listar pistas de audio de "
+                    + item.getFileName());
+            return;
+        }
+        inspectUseCase.inspect(item, ex ->
+                logPanel.error("Error inspeccionando " + item.getFileName() + ": " + ex.getMessage()));
     }
 
     // ---------------------------------------------------------------- Layout
@@ -66,12 +94,15 @@ public class VideoJoinFrame extends JFrame {
 
         JButton addBtn    = new JButton("▶  Añadir a Cola");
         JButton copyBtn   = new JButton("Copiar cmd");
+        JButton ffmpegBtn = new JButton("⚙ Configurar FFmpeg");
         styleBtn(addBtn, new Color(50, 130, 255));
         styleBtn(copyBtn, new Color(80, 80, 80));
+        styleBtn(ffmpegBtn, new Color(80, 80, 80));
         addBtn.addActionListener(e -> onAddToQueue());
         copyBtn.addActionListener(e -> copyLastCmd());
+        ffmpegBtn.addActionListener(e -> openFfmpegSetup());
         JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        btnRow.add(addBtn); btnRow.add(copyBtn);
+        btnRow.add(addBtn); btnRow.add(copyBtn); btnRow.add(ffmpegBtn);
         actionsBar.add(btnRow, BorderLayout.SOUTH);
 
         JPanel top = new JPanel(new BorderLayout(8, 8));
@@ -98,6 +129,15 @@ public class VideoJoinFrame extends JFrame {
         btn.setFont(btn.getFont().deriveFont(Font.BOLD, 12f));
         btn.setFocusPainted(false);
         btn.setMargin(new Insets(4, 12, 4, 12));
+    }
+
+    private void openFfmpegSetup() {
+        FfmpegSetupDialog dlg = new FfmpegSetupDialog(this, config);
+        dlg.setVisible(true);
+        if (dlg.isConfirmed()) {
+            ConfigRepository.save(config);
+            initInspectUseCase();
+        }
     }
 
     // ---------------------------------------------------------------- Actions
@@ -143,6 +183,15 @@ public class VideoJoinFrame extends JFrame {
     // ---------------------------------------------------------------- EventBus
 
     private void subscribeToEventBus() {
+        EventBus.get().subscribe(MediaInspectedEvent.class, e -> {
+            MediaItem item = e.mediaItem();
+            joinPanel.refreshItem(item);
+            int tracks = item.getAudioStreams() != null ? item.getAudioStreams().size() : 0;
+            logPanel.info("Inspeccionado: " + item.getFileName()
+                    + " [" + item.getFormattedDuration() + "]"
+                    + (tracks > 0 ? " — " + tracks + " pista(s) de audio" : ""));
+        });
+
         EventBus.get().subscribe(JobStatusChangedEvent.class, e -> {
             switch (e.status()) {
                 case RUNNING -> {

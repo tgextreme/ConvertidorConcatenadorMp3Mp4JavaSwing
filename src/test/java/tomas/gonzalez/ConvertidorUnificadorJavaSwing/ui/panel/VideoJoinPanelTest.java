@@ -2,6 +2,7 @@ package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.AudioStreamInfo;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.MediaItem;
 
 import javax.swing.JTable;
@@ -11,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -165,6 +167,57 @@ class VideoJoinPanelTest {
         assertEquals("Archivo ▲", table(panel).getColumnModel().getColumn(0).getHeaderValue());
         panel.sortByColumn(0);
         assertEquals("Archivo ▼", table(panel).getColumnModel().getColumn(0).getHeaderValue());
+    }
+
+    @Test
+    void refreshItem_updatesDurationAndAudioTrackLabel() throws Exception {
+        VideoJoinPanel panel = new VideoJoinPanel();
+        MediaItem item = new MediaItem(Paths.get("multi.mp4"));
+        panel.addMediaItem(item);
+
+        assertEquals("?", table(panel).getModel().getValueAt(0, 3));
+
+        item.setDurationMs(90_000);
+        item.setResolution("1280x720");
+        item.setVideoCodec("h264");
+        item.setAudioStreams(List.of(
+                new AudioStreamInfo(0, 1, "aac", "48000 Hz", "Estéreo", "spa"),
+                new AudioStreamInfo(1, 2, "ac3", "48000 Hz", "5.1", "eng")
+        ));
+        panel.refreshItem(item);
+        panel.setAudioTrack(0, 1);
+
+        TableModel model = table(panel).getModel();
+        assertEquals("1:30", model.getValueAt(0, 3));
+        assertEquals("1280x720  h264", model.getValueAt(0, 4));
+        assertEquals(1, model.getValueAt(0, 5));
+    }
+
+    @Test
+    void refreshItem_clampsInvalidTrackWhenStreamsArrive() {
+        VideoJoinPanel panel = new VideoJoinPanel();
+        MediaItem item = new MediaItem(Paths.get("clip.mp4"));
+        panel.addMediaItem(item);
+        panel.setAudioTrack(0, 5);
+
+        item.setAudioStreams(List.of(
+                new AudioStreamInfo(0, 1, "aac", "48000 Hz", "Estéreo", null)
+        ));
+        panel.refreshItem(item);
+
+        assertEquals(List.of(0), panel.getAudioTrackPerInput());
+    }
+
+    @Test
+    void onItemAdded_isInvokedWhenAdding() {
+        VideoJoinPanel panel = new VideoJoinPanel();
+        AtomicReference<MediaItem> captured = new AtomicReference<>();
+        panel.setOnItemAdded(captured::set);
+
+        MediaItem item = new MediaItem(Paths.get("a.mp4"));
+        panel.addMediaItem(item);
+
+        assertSame(item, captured.get());
     }
 
     @Test

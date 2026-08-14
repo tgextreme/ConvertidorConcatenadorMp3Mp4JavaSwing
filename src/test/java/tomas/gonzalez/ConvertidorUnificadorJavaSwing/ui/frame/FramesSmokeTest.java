@@ -2,6 +2,7 @@ package tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.frame;
 
 import org.junit.jupiter.api.Test;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.QueueManagementUseCase;
+import tomas.gonzalez.ConvertidorUnificadorJavaSwing.app.usecase.VideoJoinUseCase;
 import tomas.gonzalez.ConvertidorUnificadorJavaSwing.infra.config.ConfigRepository;
 
 import java.awt.GraphicsEnvironment;
@@ -104,5 +105,19 @@ class FramesSmokeTest {
 
         assertNotNull(bvf);
         bvf.dispose();
+    }
+
+    @Test
+    void instantiateVideoJoinFrame_whenNotHeadless() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+
+        ConfigRepository.AppConfig cfg = new ConfigRepository.AppConfig();
+        QueueManagementUseCase queue = new QueueManagementUseCase(cfg);
+        VideoJoinFrame frame = new VideoJoinFrame(cfg, new VideoJoinUseCase(queue));
+
+        assertNotNull(frame);
+        frame.dispose();
     }
 }

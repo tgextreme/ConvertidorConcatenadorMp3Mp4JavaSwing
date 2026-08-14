@@ -11,6 +11,7 @@ import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Panel showing the list of input files for video joining.
@@ -30,6 +31,7 @@ public class VideoJoinPanel extends JPanel {
 
     private int sortColumn = -1;
     private boolean sortAscending = true;
+    private Consumer<MediaItem> onItemAdded;
 
     public VideoJoinPanel() {
         setLayout(new BorderLayout(4, 4));
@@ -90,6 +92,25 @@ public class VideoJoinPanel extends JPanel {
         rows.add(item);
         selectedTrack.add(0);
         tableModel.fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
+        if (onItemAdded != null) onItemAdded.accept(item);
+    }
+
+    public void setOnItemAdded(Consumer<MediaItem> callback) {
+        this.onItemAdded = callback;
+    }
+
+    public void refreshItem(MediaItem item) {
+        int idx = rows.indexOf(item);
+        if (idx < 0) return;
+
+        List<AudioStreamInfo> streams = item.getAudioStreams();
+        if (streams != null && !streams.isEmpty()) {
+            int track = selectedTrack.get(idx);
+            if (track < 0 || track >= streams.size()) {
+                selectedTrack.set(idx, 0);
+            }
+        }
+        tableModel.fireTableRowsUpdated(idx, idx);
     }
 
     public List<MediaItem> getInputs() {

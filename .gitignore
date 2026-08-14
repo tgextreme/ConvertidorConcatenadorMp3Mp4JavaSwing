@@ -1,11 +1,13 @@
-# Build artifacts
+# Build artifacts (Maven / Java)
 target/
 *.class
 *.jar
 *.war
 *.ear
+dependency-reduced-pom.xml
+.flattened-pom.xml
 
-# Native binaries bundled locally (do not commit ffmpeg/ffprobe)
+# Native binaries bundled locally (do not commit ffmpeg/ffprobe/ffplay)
 bin/*.exe
 bin/*.dll
 bin/*.so
@@ -15,13 +17,17 @@ bin/*.dylib
 *.log
 *.out
 *.err
+*_out.txt
 hs_err_pid*
 replay_pid*
 
 # OS files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 desktop.ini
+$RECYCLE.BIN/
 
 # IDE / editor
 .idea/
@@ -29,13 +35,15 @@ desktop.ini
 .classpath
 .project
 .settings/
-
-# VS Code local workspace files
+.factorypath
 .vscode/*.log
+.cursor/
 
-# Temporary files
+# Temporary / backup files
 *.tmp
 *.temp
+*.bak
+*.orig
 *~
 
 # Python cache / virtual envs
@@ -48,8 +56,9 @@ __pycache__/
 .venv/
 venv/
 env/
+.conda/
 
-# Packaging outputs (create_installer.py)
+# Packaging outputs (create_installer.py / Inno Setup / jpackage)
 installer/build/
 installer/portable/
 installer/output/
@@ -58,12 +67,16 @@ installer/app-icon.ico
 installer/app-icon-256.png
 installer/installer_info.txt
 installer/setup_script.iss
+installer/*.exe
+installer/*.zip
 
-# Local command dumps / helper outputs
+# Local packaging script and command dumps
+create_installer.py
 cp.txt
 stderr_out.txt
-create_installer.py
 
 # App local config/output (if generated outside source tree)
 config.json
 jobs-history.json
+out/
+dist/
