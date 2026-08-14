@@ -5,19 +5,32 @@ import tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model.MediaItem;
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.JTableHeader;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Shows a list of MediaItems in a JTable with reorder and remove capabilities.
+ * Shows a list of MediaItems in a JTable with reorder, column-sort and remove capabilities.
+ * Clicking Nombre / Creación / Modificación (and other columns) sorts the real list order
+ * used for concatenation.
  */
 public class InputListPanel extends JPanel {
+
+    private static final String[] BASE_COLS = {
+            "Nombre", "Duración", "Codec", "Tamaño", "Creación", "Modificación", "Estado"
+    };
 
     private final InputTableModel model = new InputTableModel();
     private final JTable table = new JTable(model);
     private Consumer<List<MediaItem>> onItemsChanged;
+
+    private int sortColumn = -1;
+    private boolean sortAscending = true;
 
     public InputListPanel() {
         setLayout(new BorderLayout(0, 4));
@@ -32,22 +45,33 @@ public class InputListPanel extends JPanel {
         table.setGridColor(new Color(65, 65, 65));
         table.getTableHeader().setFont(table.getTableHeader().getFont().deriveFont(Font.BOLD, 12f));
         table.getTableHeader().setReorderingAllowed(false);
+        table.getTableHeader().setToolTipText(
+                "Clic en una columna para ordenar (nombre, fechas, duración, tamaño…)");
 
-        // Column widths
-        table.getColumnModel().getColumn(0).setPreferredWidth(400);
-        table.getColumnModel().getColumn(1).setPreferredWidth(90);
-        table.getColumnModel().getColumn(2).setPreferredWidth(190);
-        table.getColumnModel().getColumn(3).setPreferredWidth(100);
-        table.getColumnModel().getColumn(4).setPreferredWidth(100);
+        table.getColumnModel().getColumn(0).setPreferredWidth(280);
+        table.getColumnModel().getColumn(1).setPreferredWidth(80);
+        table.getColumnModel().getColumn(2).setPreferredWidth(140);
+        table.getColumnModel().getColumn(3).setPreferredWidth(80);
+        table.getColumnModel().getColumn(4).setPreferredWidth(120);
+        table.getColumnModel().getColumn(5).setPreferredWidth(120);
+        table.getColumnModel().getColumn(6).setPreferredWidth(90);
 
         table.setDefaultRenderer(Object.class, new StripeRenderer());
-        table.getColumnModel().getColumn(4).setCellRenderer(new StatusRenderer());
+        table.getColumnModel().getColumn(6).setCellRenderer(new StatusRenderer());
+
+        JTableHeader header = table.getTableHeader();
+        header.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int col = table.columnAtPoint(e.getPoint());
+                if (col >= 0) sortByColumn(col);
+            }
+        });
 
         JScrollPane scroll = new JScrollPane(table);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         add(scroll, BorderLayout.CENTER);
 
-        // Buttons
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         JButton upBtn = new JButton("↑ Subir");
         JButton downBtn = new JButton("↓ Bajar");
@@ -96,6 +120,59 @@ public class InputListPanel extends JPanel {
         return new ArrayList<>(model.items);
     }
 
+    /** Sorts the underlying list (concat order) by the given column. Toggle on repeated clicks. */
+    public void sortByColumn(int column) {
+        if (column < 0 || column >= BASE_COLS.length || model.items.size() < 2) return;
+
+        if (sortColumn == column) {
+            sortAscending = !sortAscending;
+        } else {
+            sortColumn = column;
+            sortAscending = true;
+        }
+
+        Comparator<MediaItem> cmp = comparatorForColumn(column);
+        if (cmp == null) return;
+        if (!sortAscending) cmp = cmp.reversed();
+
+        model.items.sort(cmp);
+        model.fireTableDataChanged();
+        updateHeaderLabels();
+        fireChanged();
+    }
+
+    private Comparator<MediaItem> comparatorForColumn(int column) {
+        return switch (column) {
+            case 0 -> Comparator.comparing(MediaItem::getFileName, String.CASE_INSENSITIVE_ORDER);
+            case 1 -> Comparator.comparingLong(MediaItem::getDurationMs);
+            case 2 -> Comparator.comparing(MediaItem::getCodecInfo, String.CASE_INSENSITIVE_ORDER);
+            case 3 -> Comparator.comparingLong(MediaItem::getFileSizeBytes);
+            case 4 -> Comparator.comparingLong(MediaItem::getCreationTimeMs);
+            case 5 -> Comparator.comparingLong(MediaItem::getLastModifiedTimeMs);
+            case 6 -> Comparator.comparing(MediaItem::isInspected);
+            default -> null;
+        };
+    }
+
+    private void updateHeaderLabels() {
+        for (int c = 0; c < BASE_COLS.length; c++) {
+            String name = BASE_COLS[c];
+            if (c == sortColumn) {
+                name = name + (sortAscending ? " ▲" : " ▼");
+            }
+            table.getColumnModel().getColumn(c).setHeaderValue(name);
+        }
+        table.getTableHeader().repaint();
+    }
+
+    private void clearSortIndicator() {
+        sortColumn = -1;
+        for (int c = 0; c < BASE_COLS.length; c++) {
+            table.getColumnModel().getColumn(c).setHeaderValue(BASE_COLS[c]);
+        }
+        table.getTableHeader().repaint();
+    }
+
     private void moveSelected(int direction) {
         int i = table.getSelectedRow();
         if (i < 0) return;
@@ -104,6 +181,7 @@ public class InputListPanel extends JPanel {
         MediaItem tmp = model.items.get(i);
         model.items.set(i, model.items.get(j));
         model.items.set(j, tmp);
+        clearSortIndicator();
         model.fireTableDataChanged();
         table.setRowSelectionInterval(j, j);
         fireChanged();
@@ -119,6 +197,7 @@ public class InputListPanel extends JPanel {
 
     private void clearAll() {
         model.items.clear();
+        clearSortIndicator();
         model.fireTableDataChanged();
         fireChanged();
     }
@@ -134,11 +213,10 @@ public class InputListPanel extends JPanel {
     // ===== Table Model =====
     private static class InputTableModel extends AbstractTableModel {
         final List<MediaItem> items = new ArrayList<>();
-        final String[] cols = {"Nombre", "Duración", "Codec", "Tamaño", "Estado"};
 
         @Override public int getRowCount() { return items.size(); }
-        @Override public int getColumnCount() { return cols.length; }
-        @Override public String getColumnName(int c) { return cols[c]; }
+        @Override public int getColumnCount() { return BASE_COLS.length; }
+        @Override public String getColumnName(int c) { return BASE_COLS[c]; }
 
         @Override public Object getValueAt(int r, int c) {
             MediaItem it = items.get(r);
@@ -147,7 +225,9 @@ public class InputListPanel extends JPanel {
                 case 1 -> it.getFormattedDuration();
                 case 2 -> it.getCodecInfo();
                 case 3 -> it.getFormattedSize();
-                case 4 -> it.isInspected() ? "✓ Listo" : "Cargando…";
+                case 4 -> it.getFormattedCreationTime();
+                case 5 -> it.getFormattedLastModifiedTime();
+                case 6 -> it.isInspected() ? "✓ Listo" : "Cargando…";
                 default -> "";
             };
         }

@@ -1,10 +1,18 @@
 package tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MediaItem {
+
+    private static final DateTimeFormatter DATE_FMT =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.systemDefault());
 
     private final Path path;
     private MediaType mediaType;
@@ -15,6 +23,8 @@ public class MediaItem {
     private String sampleRate;
     private String channels;
     private long fileSizeBytes;
+    private long creationTimeMs;
+    private long lastModifiedTimeMs;
     private boolean inspected;
     /** All audio streams found by ffprobe. Populated after inspection. */
     private List<AudioStreamInfo> audioStreams = new ArrayList<>();
@@ -23,10 +33,37 @@ public class MediaItem {
         this.path = path;
         this.inspected = false;
         this.durationMs = 0;
+        loadFileTimes();
+    }
+
+    private void loadFileTimes() {
+        try {
+            BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+            this.creationTimeMs = attrs.creationTime().toMillis();
+            this.lastModifiedTimeMs = attrs.lastModifiedTime().toMillis();
+        } catch (Exception ex) {
+            this.creationTimeMs = 0;
+            this.lastModifiedTimeMs = 0;
+        }
     }
 
     public Path getPath() { return path; }
     public String getFileName() { return path.getFileName().toString(); }
+    public long getCreationTimeMs() { return creationTimeMs; }
+    public long getLastModifiedTimeMs() { return lastModifiedTimeMs; }
+
+    public String getFormattedCreationTime() {
+        return formatTime(creationTimeMs);
+    }
+
+    public String getFormattedLastModifiedTime() {
+        return formatTime(lastModifiedTimeMs);
+    }
+
+    private static String formatTime(long epochMs) {
+        if (epochMs <= 0) return "?";
+        return DATE_FMT.format(Instant.ofEpochMilli(epochMs));
+    }
     public MediaType getMediaType() { return mediaType; }
     public void setMediaType(MediaType mediaType) { this.mediaType = mediaType; }
     public long getDurationMs() { return durationMs; }

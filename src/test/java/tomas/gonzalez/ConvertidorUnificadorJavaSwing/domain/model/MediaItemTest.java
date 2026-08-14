@@ -2,7 +2,10 @@ package tomas.gonzalez.ConvertidorUnificadorJavaSwing.domain.model;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,6 +17,28 @@ class MediaItemTest {
     @BeforeEach
     void setUp() {
         item = new MediaItem(Paths.get("test_video.mp4"));
+    }
+
+    @Test
+    void fileTimes_forExistingFile_areReadable(@TempDir Path tempDir) throws Exception {
+        Path file = tempDir.resolve("clip.mp4");
+        Files.writeString(file, "x");
+        MediaItem existing = new MediaItem(file);
+
+        assertTrue(existing.getCreationTimeMs() > 0);
+        assertTrue(existing.getLastModifiedTimeMs() > 0);
+        assertNotEquals("?", existing.getFormattedCreationTime());
+        assertNotEquals("?", existing.getFormattedLastModifiedTime());
+        assertTrue(existing.getFormattedCreationTime().matches("\\d{2}/\\d{2}/\\d{4} \\d{2}:\\d{2}"));
+        assertTrue(existing.getFormattedLastModifiedTime().matches("\\d{2}/\\d{2}/\\d{4} \\d{2}:\\d{2}"));
+    }
+
+    @Test
+    void fileTimes_forMissingFile_returnUnknown() {
+        assertEquals(0, item.getCreationTimeMs());
+        assertEquals(0, item.getLastModifiedTimeMs());
+        assertEquals("?", item.getFormattedCreationTime());
+        assertEquals("?", item.getFormattedLastModifiedTime());
     }
 
     // ── constructor / basic getters ──────────────────────────────────────────
