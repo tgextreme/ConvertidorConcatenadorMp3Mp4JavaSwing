@@ -11,13 +11,13 @@ import tomas.gonzalez.ConvertidorUnificadorJavaSwing.ui.panel.*;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.File;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Standalone JFrame for the Video Joiner feature.
- * Lets the user pick videos, select an audio track per file,
- * configure output encoding options, and enqueue the JOIN job.
+ * Simple video joiner: drag clips, pick fast concat or re-encode, output MP4.
  */
 public class VideoJoinFrame extends JFrame {
 
@@ -25,29 +25,31 @@ public class VideoJoinFrame extends JFrame {
     private final VideoJoinUseCase joinUseCase;
     private InspectMediaUseCase inspectUseCase;
 
-    private final VideoJoinPanel  joinPanel   = new VideoJoinPanel();
-    private final VideoOptionsPanel optionsPanel = new VideoOptionsPanel();
-    private final OutputPanel     outputPanel;
-    private final ProgressPanel   progressPanel = new ProgressPanel();
-    private final LogPanel        logPanel;
+    private final DropZonePanel dropZone = new DropZonePanel();
+    private final VideoJoinPanel joinPanel = new VideoJoinPanel();
+    private final VideoJoinOptionsPanel optionsPanel = new VideoJoinOptionsPanel();
+    private final OutputPanel outputPanel;
+    private final ProgressPanel progressPanel = new ProgressPanel();
+    private final LogPanel logPanel;
 
     public VideoJoinFrame(ConfigRepository.AppConfig config, VideoJoinUseCase joinUseCase) {
-        super("🎬  Unir Vídeos");
+        super("🔗  Unir Vídeos (concatenar MP4)");
         AppIconLoader.apply(this);
-        this.config    = config;
+        this.config = config;
         this.joinUseCase = joinUseCase;
         this.outputPanel = new OutputPanel(config.defaultOutputDir);
-        this.logPanel    = new LogPanel(ConfigRepository.getLogFile());
+        this.logPanel = new LogPanel(ConfigRepository.getLogFile());
 
         initInspectUseCase();
         joinPanel.setOnItemAdded(this::inspectAddedItem);
+        dropZone.setOnFilesDropped(this::onFilesDropped);
 
         buildLayout();
         subscribeToEventBus();
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(1100, 820);
-        setMinimumSize(new Dimension(900, 620));
+        setSize(900, 720);
+        setMinimumSize(new Dimension(760, 560));
         setLocationRelativeTo(null);
     }
 
@@ -62,73 +64,76 @@ public class VideoJoinFrame extends JFrame {
         }
     }
 
-    private void inspectAddedItem(MediaItem item) {
-        if (inspectUseCase == null) {
-            logPanel.warn("ffprobe no configurado: no se pueden listar pistas de audio de "
-                    + item.getFileName());
-            return;
+    private void onFilesDropped(List<File> files) {
+        List<File> videos = new ArrayList<>();
+        for (File f : files) {
+            if (f.isDirectory()) {
+                File[] nested = f.listFiles();
+                if (nested != null) {
+                    for (File child : nested) {
+                        if (child.isFile()) videos.add(child);
+                    }
+                }
+            } else if (f.isFile()) {
+                videos.add(f);
+            }
         }
+        joinPanel.addFiles(videos);
+    }
+
+    private void inspectAddedItem(MediaItem item) {
+        if (inspectUseCase == null) return;
         inspectUseCase.inspect(item, ex ->
                 logPanel.error("Error inspeccionando " + item.getFileName() + ": " + ex.getMessage()));
     }
-
-    // ---------------------------------------------------------------- Layout
 
     private void buildLayout() {
         setLayout(new BorderLayout(8, 8));
         getRootPane().setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Top: join file list + options side-by-side
-        JScrollPane optionsScroll = new JScrollPane(optionsPanel);
-        optionsScroll.setBorder(BorderFactory.createTitledBorder("Opciones de codificación"));
+        dropZone.setPreferredSize(new Dimension(100, 80));
 
-        JSplitPane centerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, joinPanel, optionsScroll);
-        centerSplit.setResizeWeight(0.65);
-        centerSplit.setDividerLocation(680);
-        centerSplit.setOneTouchExpandable(true);
-        centerSplit.setContinuousLayout(true);
+        JPanel center = new JPanel(new BorderLayout(8, 8));
+        center.add(dropZone, BorderLayout.NORTH);
+        center.add(joinPanel, BorderLayout.CENTER);
 
-        // Actions bar
-        JPanel actionsBar = new JPanel(new BorderLayout(8, 4));
-        actionsBar.add(outputPanel, BorderLayout.CENTER);
+        JPanel bottom = new JPanel(new BorderLayout(8, 8));
+        bottom.add(optionsPanel, BorderLayout.NORTH);
+        bottom.add(outputPanel, BorderLayout.CENTER);
 
-        JButton addBtn    = new JButton("▶  Añadir a Cola");
-        JButton copyBtn   = new JButton("Copiar cmd");
-        JButton ffmpegBtn = new JButton("⚙ Configurar FFmpeg");
-        styleBtn(addBtn, new Color(50, 130, 255));
-        styleBtn(copyBtn, new Color(80, 80, 80));
+        JButton joinBtn = new JButton("▶  Unir vídeos");
+        JButton ffmpegBtn = new JButton("⚙ FFmpeg");
+        styleBtn(joinBtn, new Color(0, 150, 100));
         styleBtn(ffmpegBtn, new Color(80, 80, 80));
-        addBtn.addActionListener(e -> onAddToQueue());
-        copyBtn.addActionListener(e -> copyLastCmd());
+        joinBtn.addActionListener(e -> onJoin());
         ffmpegBtn.addActionListener(e -> openFfmpegSetup());
+
         JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        btnRow.add(addBtn); btnRow.add(copyBtn); btnRow.add(ffmpegBtn);
-        actionsBar.add(btnRow, BorderLayout.SOUTH);
+        btnRow.add(joinBtn);
+        btnRow.add(ffmpegBtn);
+        bottom.add(btnRow, BorderLayout.SOUTH);
 
-        JPanel top = new JPanel(new BorderLayout(8, 8));
-        top.add(centerSplit, BorderLayout.CENTER);
-        top.add(actionsBar, BorderLayout.SOUTH);
+        JPanel main = new JPanel(new BorderLayout(8, 8));
+        main.add(center, BorderLayout.CENTER);
+        main.add(bottom, BorderLayout.SOUTH);
 
-        // Bottom tabs: progress + log
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Progreso", progressPanel);
         tabs.addTab("Logs", logPanel);
-        tabs.setPreferredSize(new Dimension(100, 220));
 
-        JSplitPane mainSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, top, tabs);
-        mainSplit.setResizeWeight(0.72);
-        mainSplit.setDividerLocation(540);
-        mainSplit.setOneTouchExpandable(true);
-        mainSplit.setContinuousLayout(true);
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, main, tabs);
+        split.setResizeWeight(0.78);
+        split.setDividerLocation(520);
+        split.setOneTouchExpandable(true);
 
-        add(mainSplit, BorderLayout.CENTER);
+        add(split, BorderLayout.CENTER);
     }
 
     private void styleBtn(JButton btn, Color fg) {
         btn.setForeground(fg);
-        btn.setFont(btn.getFont().deriveFont(Font.BOLD, 12f));
+        btn.setFont(btn.getFont().deriveFont(Font.BOLD, 13f));
         btn.setFocusPainted(false);
-        btn.setMargin(new Insets(4, 12, 4, 12));
+        btn.setMargin(new Insets(6, 16, 6, 16));
     }
 
     private void openFfmpegSetup() {
@@ -140,86 +145,69 @@ public class VideoJoinFrame extends JFrame {
         }
     }
 
-    // ---------------------------------------------------------------- Actions
-
-    private void onAddToQueue() {
+    private void onJoin() {
         List<MediaItem> inputs = joinPanel.getInputs();
         if (inputs.size() < 2) {
             JOptionPane.showMessageDialog(this,
-                "Añade al menos 2 vídeos para unir.",
-                "Validación", JOptionPane.WARNING_MESSAGE);
+                    "Añade al menos 2 vídeos para unir.",
+                    "Validación", JOptionPane.WARNING_MESSAGE);
             return;
         }
         if (config.ffmpegPath == null || config.ffmpegPath.trim().isEmpty()) {
             JOptionPane.showMessageDialog(this,
-                "FFmpeg no está configurado. Configúralo primero.",
-                "Sin FFmpeg", JOptionPane.WARNING_MESSAGE);
+                    "FFmpeg no está configurado.",
+                    "Sin FFmpeg", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        String ext = optionsPanel.getOutputExtension();
-        Path output = outputPanel.getOutputPath(ext);
+        Path output = outputPanel.getOutputPath(optionsPanel.getOutputExtension());
         if (output == null) {
             JOptionPane.showMessageDialog(this,
-                "Especifica el archivo de salida.",
-                "Sin salida", JOptionPane.WARNING_MESSAGE);
+                    "Indica carpeta y nombre del archivo de salida.",
+                    "Sin salida", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        List<Integer> audioTracks = joinPanel.getAudioTrackPerInput();
-
         try {
-            joinUseCase.submit(inputs, audioTracks, optionsPanel.buildOptions(), output);
-            logPanel.info("Trabajo de unión añadido a la cola.");
+            joinUseCase.submit(inputs, optionsPanel.buildOptions(), output);
+            logPanel.info("Unión añadida a la cola: " + output.getFileName());
         } catch (IllegalArgumentException ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Validación", JOptionPane.WARNING_MESSAGE);
         }
     }
 
-    private void copyLastCmd() {
-        logPanel.info("Usa el botón 'Copiar cmd' en la pestaña Logs tras iniciar el trabajo.");
-    }
-
-    // ---------------------------------------------------------------- EventBus
-
     private void subscribeToEventBus() {
         EventBus.get().subscribe(MediaInspectedEvent.class, e -> {
+            joinPanel.refreshItem(e.mediaItem());
             MediaItem item = e.mediaItem();
-            joinPanel.refreshItem(item);
-            int tracks = item.getAudioStreams() != null ? item.getAudioStreams().size() : 0;
-            logPanel.info("Inspeccionado: " + item.getFileName()
-                    + " [" + item.getFormattedDuration() + "]"
-                    + (tracks > 0 ? " — " + tracks + " pista(s) de audio" : ""));
+            logPanel.info("Listo: " + item.getFileName() + " [" + item.getFormattedDuration()
+                    + "] " + item.getCodecInfo());
         });
 
         EventBus.get().subscribe(JobStatusChangedEvent.class, e -> {
             switch (e.status()) {
                 case RUNNING -> {
-                    progressPanel.setStatus("Ejecutando: " + e.job().getDisplayName());
-                    logPanel.info("Iniciado: " + e.job().getDisplayName());
+                    progressPanel.setStatus("Uniendo: " + e.job().getDisplayName());
                     if (e.job().getFfmpegCommand() != null) {
                         logPanel.setLastCommand(e.job().getFfmpegCommand());
                     }
                 }
                 case SUCCESS -> {
                     progressPanel.setComplete();
-                    logPanel.info("✓ Completado: " + e.job().getDisplayName());
+                    logPanel.info("✓ Unión completada: " + e.job().getDisplayName());
                 }
                 case FAILED -> {
-                    progressPanel.setStatus("Error: " + e.job().getDisplayName());
-                    logPanel.error("✗ Error: " + e.job().getDisplayName() +
-                        (e.job().getErrorMessage() != null ? " → " + e.job().getErrorMessage() : ""));
+                    progressPanel.setStatus("Error en la unión");
+                    logPanel.error("✗ Error: " + e.job().getDisplayName()
+                            + (e.job().getErrorMessage() != null ? " → " + e.job().getErrorMessage() : ""));
                 }
-                case CANCELED -> {
-                    progressPanel.setStatus("Cancelado.");
-                    logPanel.warn("■ Cancelado: " + e.job().getDisplayName());
-                }
+                case CANCELED -> progressPanel.setStatus("Cancelado.");
                 default -> {}
             }
         });
 
         EventBus.get().subscribe(JobProgressEvent.class, e ->
-            progressPanel.setProgress(e.percent(), e.speed(), e.job().getDisplayName()));
+                progressPanel.setProgress(e.percent(), e.speed(), e.job().getDisplayName()));
 
         EventBus.get().subscribe(JobLogEvent.class, e -> logPanel.log(e.level(), e.message()));
     }

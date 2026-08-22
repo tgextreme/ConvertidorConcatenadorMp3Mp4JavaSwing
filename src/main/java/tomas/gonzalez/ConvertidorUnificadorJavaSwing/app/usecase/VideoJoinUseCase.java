@@ -6,8 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Validates and enqueues Video Join jobs.
- * A join job re-encodes N video files into one, with per-file audio track selection.
+ * Validates and enqueues video join (concat) jobs.
  */
 public class VideoJoinUseCase {
 
@@ -17,17 +16,7 @@ public class VideoJoinUseCase {
         this.queueUseCase = queueUseCase;
     }
 
-    /**
-     * Validates the plan and enqueues the job.
-     *
-     * @param inputs             ordered list of input video files
-     * @param audioTrackPerInput per-file audio track index (0-based among audio streams)
-     * @param videoOptions       encoding options for output
-     * @param output             output file path
-     * @throws IllegalArgumentException if validation fails
-     */
-    public void submit(List<MediaItem> inputs, List<Integer> audioTrackPerInput,
-                       VideoOptions videoOptions, Path output) {
+    public void submit(List<MediaItem> inputs, JoinOptions options, Path output) {
         if (inputs == null || inputs.isEmpty()) {
             throw new IllegalArgumentException("Se requiere al menos 1 archivo de entrada.");
         }
@@ -37,19 +26,16 @@ public class VideoJoinUseCase {
         if (output == null) {
             throw new IllegalArgumentException("La ruta de salida no puede ser nula.");
         }
-        if (videoOptions == null) {
-            throw new IllegalArgumentException("Las opciones de vídeo no pueden ser nulas.");
+        if (options == null) {
+            throw new IllegalArgumentException("Las opciones de unión no pueden ser nulas.");
         }
 
-        // Pad audio track list with zeros if shorter than input list
-        List<Integer> tracks = audioTrackPerInput != null ? audioTrackPerInput : List.of();
-        List<Integer> paddedTracks = new java.util.ArrayList<>();
-        for (int i = 0; i < inputs.size(); i++) {
-            paddedTracks.add(i < tracks.size() ? tracks.get(i) : 0);
-        }
-
-        JoinOptions opts = new JoinOptions(videoOptions, paddedTracks);
-        Job job = new Job(MediaType.VIDEO, Operation.JOIN, inputs, output, opts);
+        Job job = new Job(
+                MediaType.VIDEO,
+                Operation.CONCAT,
+                inputs,
+                output,
+                options.toVideoOptions());
         queueUseCase.enqueue(job);
     }
 }

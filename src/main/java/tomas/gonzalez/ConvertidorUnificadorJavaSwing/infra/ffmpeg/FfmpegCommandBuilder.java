@@ -131,6 +131,11 @@ public class FfmpegCommandBuilder {
             applyAudioOptions(cmd, ao);
         } else {
             cmd.add("-c"); cmd.add("copy");
+            cmd.add("-avoid_negative_ts"); cmd.add("make_zero");
+            String out = job.getOutput().toString().toLowerCase();
+            if (out.endsWith(".mp4") || out.endsWith(".mov")) {
+                cmd.add("-movflags"); cmd.add("+faststart");
+            }
         }
 
         cmd.add(job.getOutput().toAbsolutePath().toString());
@@ -186,12 +191,20 @@ public class FfmpegCommandBuilder {
         if (videoCodec == null || videoCodec.trim().isEmpty()) videoCodec = "libx264";
         cmd.add("-c:v"); cmd.add(videoCodec);
 
-        if (vo.getBitrateMode() == VideoOptions.BitrateMode.CRF) {
+        boolean isNvenc = videoCodec.contains("nvenc");
+        if (isNvenc) {
+            cmd.add("-cq"); cmd.add(String.valueOf(vo.getCrf()));
+            String nvPreset = vo.getPreset();
+            if (nvPreset == null || nvPreset.isBlank() || !nvPreset.startsWith("p")) {
+                nvPreset = "p4";
+            }
+            cmd.add("-preset"); cmd.add(nvPreset);
+        } else if (vo.getBitrateMode() == VideoOptions.BitrateMode.CRF) {
             cmd.add("-crf"); cmd.add(String.valueOf(vo.getCrf()));
         } else if (vo.getVideoBitrateKbps() > 0) {
             cmd.add("-b:v"); cmd.add(vo.getVideoBitrateKbps() + "k");
         }
-        if (vo.getPreset() != null && !vo.getPreset().trim().isEmpty()
+        if (!isNvenc && vo.getPreset() != null && !vo.getPreset().trim().isEmpty()
                 && (videoCodec.contains("x264") || videoCodec.contains("x265"))) {
             cmd.add("-preset"); cmd.add(vo.getPreset());
         }
@@ -210,11 +223,11 @@ public class FfmpegCommandBuilder {
         return cmd;
     }
 
-    // ---------------------------------------------------------------- JOIN (Video Joiner with per-file audio track)
+    // ---------------------------------------------------------------- JOIN (legacy re-encode join; UI uses CONCAT now)
     private List<String> buildJoin(Job job) {
-        JoinOptions jo = (JoinOptions) job.getOptions();
-        VideoOptions vo = jo.getVideoOptions();
-        List<Integer> audioTracks = jo.getAudioTrackPerInput();
+        VideoOptions vo = job.getOptions() instanceof JoinOptions jo
+                ? jo.toVideoOptions()
+                : (VideoOptions) job.getOptions();
         int n = job.getInputs().size();
 
         int w   = vo.getWidth()  > 0 ? vo.getWidth()  : 1280;
@@ -241,8 +254,7 @@ public class FfmpegCommandBuilder {
               .append("[v").append(i).append("];");
         }
         for (int i = 0; i < n; i++) {
-            int track = (audioTracks != null && i < audioTracks.size()) ? audioTracks.get(i) : 0;
-            fc.append("[").append(i).append(":a:").append(track).append("]")
+            fc.append("[").append(i).append(":a:0]")
               .append("aresample=async=1[a").append(i).append("];");
         }
         for (int i = 0; i < n; i++) {
@@ -259,12 +271,16 @@ public class FfmpegCommandBuilder {
             videoCodec = "libx264";
         }
         cmd.add("-c:v"); cmd.add(videoCodec);
-        if (vo.getBitrateMode() == VideoOptions.BitrateMode.CRF) {
+        boolean isNvenc = videoCodec.contains("nvenc");
+        if (isNvenc) {
+            cmd.add("-cq"); cmd.add(String.valueOf(vo.getCrf()));
+            cmd.add("-preset"); cmd.add("p4");
+        } else if (vo.getBitrateMode() == VideoOptions.BitrateMode.CRF) {
             cmd.add("-crf"); cmd.add(String.valueOf(vo.getCrf()));
         } else if (vo.getVideoBitrateKbps() > 0) {
             cmd.add("-b:v"); cmd.add(vo.getVideoBitrateKbps() + "k");
         }
-        if (vo.getPreset() != null && !vo.getPreset().trim().isEmpty()
+        if (!isNvenc && vo.getPreset() != null && !vo.getPreset().trim().isEmpty()
                 && (videoCodec.contains("x264") || videoCodec.contains("x265"))) {
             cmd.add("-preset"); cmd.add(vo.getPreset());
         }

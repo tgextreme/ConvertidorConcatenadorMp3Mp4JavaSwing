@@ -24,18 +24,22 @@ class VideoJoinUseCaseTest {
         return item;
     }
 
+    private JoinOptions joinOptions() {
+        return new JoinOptions(JoinOptions.Mode.FAST_COPY);
+    }
+
     @Test
     void submit_nullInputs_throws() {
         VideoJoinUseCase uc = new VideoJoinUseCase(queue());
         assertThrows(IllegalArgumentException.class, () ->
-            uc.submit(null, null, new VideoOptions(), Paths.get("out.mp4")));
+            uc.submit(null, joinOptions(), Paths.get("out.mp4")));
     }
 
     @Test
     void submit_emptyInputs_throws() {
         VideoJoinUseCase uc = new VideoJoinUseCase(queue());
         assertThrows(IllegalArgumentException.class, () ->
-            uc.submit(Collections.emptyList(), null, new VideoOptions(), Paths.get("out.mp4")));
+            uc.submit(Collections.emptyList(), joinOptions(), Paths.get("out.mp4")));
     }
 
     @Test
@@ -43,7 +47,7 @@ class VideoJoinUseCaseTest {
         VideoJoinUseCase uc = new VideoJoinUseCase(queue());
         List<MediaItem> single = List.of(mediaItem("a.mp4"));
         assertThrows(IllegalArgumentException.class, () ->
-            uc.submit(single, null, new VideoOptions(), Paths.get("out.mp4")));
+            uc.submit(single, joinOptions(), Paths.get("out.mp4")));
     }
 
     @Test
@@ -51,7 +55,7 @@ class VideoJoinUseCaseTest {
         VideoJoinUseCase uc = new VideoJoinUseCase(queue());
         List<MediaItem> inputs = List.of(mediaItem("a.mp4"), mediaItem("b.mp4"));
         assertThrows(IllegalArgumentException.class, () ->
-            uc.submit(inputs, null, new VideoOptions(), null));
+            uc.submit(inputs, joinOptions(), null));
     }
 
     @Test
@@ -59,34 +63,37 @@ class VideoJoinUseCaseTest {
         VideoJoinUseCase uc = new VideoJoinUseCase(queue());
         List<MediaItem> inputs = List.of(mediaItem("a.mp4"), mediaItem("b.mp4"));
         assertThrows(IllegalArgumentException.class, () ->
-            uc.submit(inputs, null, null, Paths.get("out.mp4")));
+            uc.submit(inputs, null, Paths.get("out.mp4")));
     }
 
     @Test
-    void submit_validInputs_enqueuesJobWithJoinOperation() {
+    void submit_validInputs_enqueuesConcatJobWithCopy() {
         QueueManagementUseCase queueUseCase = queue();
         VideoJoinUseCase uc = new VideoJoinUseCase(queueUseCase);
         List<MediaItem> inputs = List.of(mediaItem("a.mp4"), mediaItem("b.mp4"));
 
-        uc.submit(inputs, List.of(0, 0), new VideoOptions(), Paths.get("out.mp4"));
+        uc.submit(inputs, joinOptions(), Paths.get("out.mp4"));
 
         assertFalse(queueUseCase.getHistory().isEmpty());
         Job job = queueUseCase.getHistory().get(0);
-        assertEquals(Operation.JOIN, job.getOperation());
+        assertEquals(Operation.CONCAT, job.getOperation());
         assertEquals(MediaType.VIDEO, job.getMediaType());
         assertEquals(2, job.getInputs().size());
+        VideoOptions vo = (VideoOptions) job.getOptions();
+        assertEquals("copy", vo.getVideoCodec());
     }
 
     @Test
-    void submit_nullAudioTracks_paddedWithZeros_doesNotThrow() {
+    void submit_reencodeGpu_usesNvencInOptions() {
         QueueManagementUseCase queueUseCase = queue();
         VideoJoinUseCase uc = new VideoJoinUseCase(queueUseCase);
         List<MediaItem> inputs = List.of(mediaItem("a.mp4"), mediaItem("b.mp4"));
+        JoinOptions opts = new JoinOptions(JoinOptions.Mode.REENCODE_GPU);
 
-        assertDoesNotThrow(() ->
-            uc.submit(inputs, null, new VideoOptions(), Paths.get("out.mp4")));
+        uc.submit(inputs, opts, Paths.get("out.mp4"));
 
-        assertEquals(1, queueUseCase.getHistory().size());
+        VideoOptions vo = (VideoOptions) queueUseCase.getHistory().get(0).getOptions();
+        assertEquals("h264_nvenc", vo.getVideoCodec());
     }
 
     @Test
@@ -95,10 +102,10 @@ class VideoJoinUseCaseTest {
         VideoJoinUseCase uc = new VideoJoinUseCase(queueUseCase);
         List<MediaItem> inputs = List.of(mediaItem("a.mp4"), mediaItem("b.mp4"), mediaItem("c.mp4"));
 
-        uc.submit(inputs, List.of(0, 1, 0), new VideoOptions(), Paths.get("out.mp4"));
+        uc.submit(inputs, joinOptions(), Paths.get("out.mp4"));
 
         Job job = queueUseCase.getHistory().get(0);
         assertEquals(3, job.getInputs().size());
-        assertEquals(Operation.JOIN, job.getOperation());
+        assertEquals(Operation.CONCAT, job.getOperation());
     }
 }

@@ -515,7 +515,7 @@ class FfmpegCommandBuilderTest {
 
     // ── JOIN (Video Joiner) ───────────────────────────────────────────────────
 
-    private Job joinJob(int numInputs, java.util.List<Integer> audioTracks) {
+    private Job joinJob(int numInputs) {
         java.util.List<MediaItem> inputs = new java.util.ArrayList<>();
         for (int i = 0; i < numInputs; i++) {
             inputs.add(new MediaItem(tempDir.resolve("clip" + i + ".mp4")));
@@ -523,13 +523,12 @@ class FfmpegCommandBuilderTest {
         VideoOptions vo = new VideoOptions();
         vo.setVideoCodec("libx264");
         vo.setCrf(23);
-        JoinOptions jo = new JoinOptions(vo, audioTracks);
-        return new Job(MediaType.VIDEO, Operation.JOIN, inputs, outputPath, jo);
+        return new Job(MediaType.VIDEO, Operation.JOIN, inputs, outputPath, vo);
     }
 
     @Test
     void buildJoin_twoInputs_hasTwoIFlags() throws Exception {
-        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+        List<String> cmd = builder.build(joinJob(2));
 
         assertCommandStartsCorrectly(cmd);
         long iCount = cmd.stream().filter("-i"::equals).count();
@@ -538,7 +537,7 @@ class FfmpegCommandBuilderTest {
 
     @Test
     void buildJoin_threeInputs_hasConcatFilterN3() throws Exception {
-        List<String> cmd = builder.build(joinJob(3, List.of(0, 0, 0)));
+        List<String> cmd = builder.build(joinJob(3));
 
         assertTrue(cmd.contains("-filter_complex"), "JOIN must use -filter_complex");
         int fcIdx = cmd.indexOf("-filter_complex");
@@ -548,7 +547,7 @@ class FfmpegCommandBuilderTest {
 
     @Test
     void buildJoin_mapsVoutAndAout() throws Exception {
-        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+        List<String> cmd = builder.build(joinJob(2));
 
         assertContainsSequence(cmd, "-map", "[vout]");
         assertContainsSequence(cmd, "-map", "[aout]");
@@ -556,7 +555,7 @@ class FfmpegCommandBuilderTest {
 
     @Test
     void buildJoin_usesVideoCodecFromOptions() throws Exception {
-        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+        List<String> cmd = builder.build(joinJob(2));
 
         assertContainsSequence(cmd, "-c:v", "libx264");
     }
@@ -569,8 +568,7 @@ class FfmpegCommandBuilderTest {
         );
         VideoOptions vo = new VideoOptions();
         vo.setVideoCodec("copy");  // copy not valid for JOIN
-        JoinOptions jo = new JoinOptions(vo, List.of(0, 0));
-        Job job = new Job(MediaType.VIDEO, Operation.JOIN, inputs, outputPath, jo);
+        Job job = new Job(MediaType.VIDEO, Operation.JOIN, inputs, outputPath, vo);
 
         List<String> cmd = builder.build(job);
 
@@ -578,21 +576,19 @@ class FfmpegCommandBuilderTest {
     }
 
     @Test
-    void buildJoin_nullAudioTracks_usesDefault0() throws Exception {
-        // Should not throw even when audioTracks is null
-        List<String> cmd = builder.build(joinJob(2, null));
+    void buildJoin_usesAudioTrackZero() throws Exception {
+        List<String> cmd = builder.build(joinJob(2));
 
         assertTrue(cmd.contains("-filter_complex"));
         int fcIdx = cmd.indexOf("-filter_complex");
         String fc = cmd.get(fcIdx + 1);
-        // Each input selects audio track 0  →  [0:a:0] and [1:a:0]
-        assertTrue(fc.contains("[0:a:0]"), "With null tracks, input 0 must use audio track 0");
-        assertTrue(fc.contains("[1:a:0]"), "With null tracks, input 1 must use audio track 0");
+        assertTrue(fc.contains("[0:a:0]"));
+        assertTrue(fc.contains("[1:a:0]"));
     }
 
     @Test
     void buildJoin_outputIsLastArgument() throws Exception {
-        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+        List<String> cmd = builder.build(joinJob(2));
 
         assertEquals(outputPath.toAbsolutePath().toString(), cmd.get(cmd.size() - 1));
     }
@@ -600,7 +596,7 @@ class FfmpegCommandBuilderTest {
     @Test
     void buildJoin_defaultScale_uses1280x720() throws Exception {
         // VideoOptions with 0 width/height → default 1280×720
-        List<String> cmd = builder.build(joinJob(2, List.of(0, 0)));
+        List<String> cmd = builder.build(joinJob(2));
 
         int fcIdx = cmd.indexOf("-filter_complex");
         String fc = cmd.get(fcIdx + 1);
@@ -608,12 +604,31 @@ class FfmpegCommandBuilderTest {
     }
 
     @Test
-    void buildJoin_customAudioTrack_usesCorrectIndex() throws Exception {
-        // Input 1 should use audio track 2 ([1:a:2])
-        List<String> cmd = builder.build(joinJob(2, List.of(0, 2)));
+    void buildJoin_customAudioTrack_usesTrackZero() throws Exception {
+        List<String> cmd = builder.build(joinJob(2));
 
         int fcIdx = cmd.indexOf("-filter_complex");
         String fc = cmd.get(fcIdx + 1);
-        assertTrue(fc.contains("[1:a:2]"), "Input 1 must select audio track 2");
+        assertTrue(fc.contains("[1:a:0]"));
+    }
+
+    @Test
+    void buildConcatFilterComplex_nvenc_usesCqNotCrf() throws Exception {
+        java.util.List<MediaItem> inputs = List.of(
+            new MediaItem(tempDir.resolve("a.mp4")),
+            new MediaItem(tempDir.resolve("b.mp4"))
+        );
+        VideoOptions vo = new VideoOptions();
+        vo.setVideoCodec("h264_nvenc");
+        vo.setCrf(23);
+        vo.setPreset("p4");
+        Job job = new Job(MediaType.VIDEO, Operation.CONCAT, inputs, outputPath, vo);
+
+        List<String> cmd = builder.build(job);
+
+        assertContainsSequence(cmd, "-c:v", "h264_nvenc");
+        assertContainsSequence(cmd, "-cq", "23");
+        assertContainsSequence(cmd, "-preset", "p4");
+        assertFalse(cmd.contains("-crf"));
     }
 }
